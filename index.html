@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>이차함수 그래프 학습 시스템</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body class="page page-index">
+    <header class="site-header">
+      <h1>이차함수 그래프 학습 시스템</h1>
+      <p class="subtitle">학번과 이름을 입력하고, 풀고 싶은 문제를 선택하세요.</p>
+    </header>
+
+    <main class="content">
+      <section class="card">
+        <h2>학생 정보</h2>
+        <form id="student-form" class="form-grid">
+          <label>
+            학번
+            <input type="text" id="student-id" name="studentId" required placeholder="예: 31025" />
+          </label>
+          <label>
+            이름
+            <input type="text" id="student-name" name="studentName" required placeholder="예: 홍길동" />
+          </label>
+          <label class="full-width">
+            문제 선택
+            <select id="problem-select" name="problemId" required>
+              <option value="" disabled selected>문제를 선택하세요</option>
+              <option value="free-fall">문제1</option>
+              <option value="inclined-plane">문제2</option>
+              <option value="air-resistance">문제3</option>
+              <option value="spring-oscillation">문제4</option>
+            </select>
+          </label>
+
+          <div class="form-actions full-width">
+            <button type="submit" class="btn primary">문제 풀기 시작</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card secondary">
+        <h2>교사용 모니터링</h2>
+        <p>제출된 자유물체도와 GPT 피드백을 확인하려면 아래 버튼을 클릭하세요.</p>
+        <a href="./teacherMonito.html" class="btn">교사 모니터링 페이지로 이동</a>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <small>© 2025 이차함수 그래프 학습 시스템</small>
+    </footer>
+
+    <script type="module" src="./src/index.js"></script>
+  </body>
+</html>
