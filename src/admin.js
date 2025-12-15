@@ -54,7 +54,7 @@ function renderSubmissionsList() {
       <td>${formatDate(sub.submittedAt)}</td>
       <td>${sub.studentId}</td>
       <td>${sub.studentName}</td>
-      <td>${PROBLEM_LABELS[sub.problemId] || sub.problemLabel || sub.problemId}</td>
+      <td>${sub.problemText || sub.problemLabel || sub.problemId}</td>
     `;
     tr.addEventListener('click', () => {
       renderSubmissionDetail(sub);
@@ -86,15 +86,14 @@ function renderSubmissionDetail(submission) {
   }
 
   const feedback = submission.gptFeedback || {};
+  const steps = submission.stepAnswers || {};
 
   container.innerHTML = `
     <div class="detail-section">
       <h3>학생 정보</h3>
       <p><strong>학번:</strong> ${submission.studentId}</p>
       <p><strong>이름:</strong> ${submission.studentName}</p>
-      <p><strong>문제:</strong> ${
-        PROBLEM_LABELS[submission.problemId] || submission.problemLabel || submission.problemId
-      }</p>
+      <p><strong>문제:</strong> ${submission.problemText || submission.problemLabel || submission.problemId}</p>
       <p><strong>제출 시각:</strong> ${formatDate(submission.submittedAt)}</p>
     </div>
 
@@ -109,6 +108,30 @@ function renderSubmissionDetail(submission) {
       </div>
       <p><strong>보충 설명:</strong></p>
       <p class="detail-description">${submission.description || '(보충 설명 없음)'}</p>
+      <div class="detail-steps">
+        <h4>단계별 답안</h4>
+        <ul>
+          <li><strong>1단계 (그래프 모양):</strong> ${
+            steps.step1
+              ? `${steps.step1.choice} ${steps.step1.correct ? '✅' : '❌'}`
+              : '(기록 없음)'
+          }</li>
+          <li><strong>2단계 (꼭짓점 좌표):</strong> ${
+            steps.step2
+              ? `${steps.step2.input} ${steps.step2.correct ? '✅' : '❌'}${
+                  steps.step2.correctAnswer ? ` (정답: ${steps.step2.correctAnswer})` : ''
+                }`
+              : '(기록 없음)'
+          }</li>
+          <li><strong>3단계 (y절편):</strong> ${
+            steps.step3
+              ? `${steps.step3.display || steps.step3.input} ${
+                  steps.step3.correct ? '✅' : '❌'
+                }${steps.step3.correctAnswer ? ` (정답: ${steps.step3.correctAnswer})` : ''}`
+              : '(기록 없음)'
+          }</li>
+        </ul>
+      </div>
     </div>
 
     <div class="detail-section">

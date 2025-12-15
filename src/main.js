@@ -149,6 +149,28 @@ function loadSession() {
   }
 }
 
+// 단계별 답안 저장/로드 헬퍼
+function saveStepAnswer(stepKey, data) {
+  try {
+    const raw = sessionStorage.getItem('stepAnswers');
+    const existing = raw ? JSON.parse(raw) : {};
+    existing[stepKey] = { ...(existing[stepKey] || {}), ...data };
+    sessionStorage.setItem('stepAnswers', JSON.stringify(existing));
+  } catch (e) {
+    console.warn('stepAnswers 저장 중 오류:', e);
+  }
+}
+
+function loadStepAnswers() {
+  try {
+    const raw = sessionStorage.getItem('stepAnswers');
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    console.warn('stepAnswers 불러오기 중 오류:', e);
+    return {};
+  }
+}
+
 function initProblemPanel(session) {
   const infoEl = document.getElementById('student-info');
   const visualEl = document.getElementById('problem-visual');
@@ -904,6 +926,12 @@ function initCanvas() {
     drawnElements = [];
     vertexPoint = null;
     passingPoint = null;
+    // 단계별 답안도 초기화
+    try {
+      sessionStorage.removeItem('stepAnswers');
+    } catch (e) {
+      console.warn('stepAnswers 초기화 중 오류:', e);
+    }
     // 꼭짓점을 다시 먼저 찍도록 초기화
     pointBtnVisible = false;
     if (pointBtn) pointBtn.style.display = 'none';
@@ -1095,20 +1123,37 @@ async function callGptVisionApi(payload) {
     .replace(/\^{([^}]+)}/g, '^$1')  // ^{2} -> ^2
     .replace(/\{([^}]+)\}/g, '$1');  // {x} -> x
   
+  // 정답 정보(꼭짓점, y절편, 개형)를 명시적으로 포함
+  let correctInfoText = '';
+  if (payload.problem) {
+    const { a, h, k, yIntercept } = payload.problem;
+    const shapeKo = a > 0 ? '아래로 볼록' : '위로 볼록';
+    correctInfoText = `
+정답 이차함수 정보 (반드시 이 값을 기준으로 채점하라):
+- 꼭짓점: (${h}, ${k})
+- y절편: ${yIntercept}
+- 개형: ${shapeKo}
+`;
+  }
+
   const prompt = `
 너는 고등학교 수학 교사이며 학생의 이차함수 그래프 과제를 채점한다.
 문제: ${problemTextClean}
 
-다음 체크리스트를 기준으로 각 항목을 평가하라. 각 항목은 통과(1점) 또는 실패(0점)로 평가한다.
+${correctInfoText}
+
+학생이 작성한 그래프에 대한 설명 글을, 아래 체크리스트를 활용하여 채점하라.
 
 채점 체크리스트:
-1. 포물선이 정답과 일치하는가? (1점)
-2. 그래프 설명에서 꼭짓점의 위치를 잘 설명했는가? (1점)
-3. 그래프 설명에서 y절편을 잘 설명했는가? (1점)
-4. 그래프 설명에서 축을 잘 설명했는가? (1점)
+1. 포물선의 꼭짓점이 올바른가? (1점)
+   - 학생의 설명에 제시된 꼭짓점 좌표가 정답 정보의 꼭짓점과 일치하면 통과.
+2. 포물선의 y절편이 올바른가? (1점)
+   - 학생의 설명에 제시된 y절편 값이 정답 정보의 y절편과 일치하면 통과.
+3. 포물선의 개형이 위로 볼록인지, 아니면 아래로 볼록인지 맞혔는가? (1점)
+   - 학생의 설명에서 언급한 개형(위로/아래로 볼록)이 정답 정보의 개형과 일치하면 통과.
 
 만점 답변 예시:
-"완전제곱식으로 표현하면 y=-(x-1)+1이므로 꼭짓점의 위치는 (1,1)임을 알 수 있다. x=0을 대입했을 때 y=0이므로, y절편은 0이다. 완전제곱식을 보면 축이 x=1임을 알 수 있다. 따라서 그래프의 모양은 위와 같다."
+"주어진 식을 완전제곱식으로 표현하면 y=-(x-1)^2+1이므로 꼭짓점의 위치는 (1,1)임을 알 수 있다. x=0을 대입했을 때 함숫값은 y=1이므로, y절편은 1이다. 최고차항의 계수가 음수이므로 그래프의 모양은 위로 볼록한 모양이다."
 
 학생이 입력한 추가 설명:
 "${payload.answerDescription || '없음'}"
@@ -1119,14 +1164,13 @@ async function callGptVisionApi(payload) {
 출력 형식:
 {
   "checklist": {
-    "graphMatch": {"passed": true/false, "score": 0 또는 1, "comment": "평가 코멘트"},
-    "vertexDesc": {"passed": true/false, "score": 0 또는 1, "comment": "평가 코멘트"},
-    "yInterceptDesc": {"passed": true/false, "score": 0 또는 1, "comment": "평가 코멘트"},
-    "axisDesc": {"passed": true/false, "score": 0 또는 1, "comment": "평가 코멘트"}
+    "vertexCorrect": {"passed": true/false, "score": 0 또는 1, "comment": "평가 코멘트"},
+    "yInterceptCorrect": {"passed": true/false, "score": 0 또는 1, "comment": "평가 코멘트"},
+    "shapeCorrect": {"passed": true/false, "score": 0 또는 1, "comment": "평가 코멘트"}
   },
-  "score": 0~4 정수 (checklist의 모든 score 합계),
-  "maxScore": 4,
-  "feedback": "전체적인 피드백과 개선 사항을 친절히 서술"
+  "score": 0~3 정수 (checklist의 모든 score 합계),
+  "maxScore": 3,
+  "feedback": "전체적인 피드백과 개선 사항을 친절히 서술. 서술이 맞더라도, 더 설명해주면 좋은 부분을 언급하는 피드백을 주기"
 }
 `;
 
@@ -1143,15 +1187,7 @@ async function callGptVisionApi(payload) {
           { role: "system", content: "당신은 고등학교 수학 교사입니다. 이차함수 그래프를 정확하게 채점하고 체크리스트 형식으로 평가합니다." },
           {
             role: "user",
-            content: [
-              { type: "text", text: prompt },
-              {
-                type: "image_url",
-                image_url: {
-                  url: payload.imageDataUrl   // 문자열을 url 필드 안으로 넣어야 함
-                }
-              }
-            ],
+            content: prompt,
           },
         ],
         temperature: 0.4,
@@ -1193,13 +1229,12 @@ async function callGptVisionApi(payload) {
     
       parsedFeedback = JSON.parse(jsonText);
       
-      // 체크리스트가 없는 경우 기본값 설정
+      // 체크리스트가 없는 경우 기본값 설정 (3개 항목)
       if (!parsedFeedback.checklist) {
         parsedFeedback.checklist = {
-          graphMatch: { passed: false, score: 0, comment: "체크리스트 항목 없음" },
-          vertexDesc: { passed: false, score: 0, comment: "체크리스트 항목 없음" },
-          yInterceptDesc: { passed: false, score: 0, comment: "체크리스트 항목 없음" },
-          axisDesc: { passed: false, score: 0, comment: "체크리스트 항목 없음" },
+          vertexCorrect:      { passed: false, score: 0, comment: "체크리스트 항목 없음" },
+          yInterceptCorrect:  { passed: false, score: 0, comment: "체크리스트 항목 없음" },
+          shapeCorrect:       { passed: false, score: 0, comment: "체크리스트 항목 없음" },
         };
       }
       
@@ -1210,22 +1245,21 @@ async function callGptVisionApi(payload) {
         );
       }
       
-      // maxScore 기본값 설정
+      // maxScore 기본값 설정 (3점 만점)
       if (!parsedFeedback.maxScore) {
-        parsedFeedback.maxScore = 4;
+        parsedFeedback.maxScore = 3;
       }
       
     } catch (e) {
       console.warn("⚠️ JSON 파싱 실패, 원본 content:", rawContent, "에러:", e);
       parsedFeedback = {
         checklist: {
-          graphMatch: { passed: false, score: 0, comment: "채점 불가 - 응답 파싱 실패" },
-          vertexDesc: { passed: false, score: 0, comment: "채점 불가 - 응답 파싱 실패" },
-          yInterceptDesc: { passed: false, score: 0, comment: "채점 불가 - 응답 파싱 실패" },
-          axisDesc: { passed: false, score: 0, comment: "채점 불가 - 응답 파싱 실패" },
+          vertexCorrect:      { passed: false, score: 0, comment: "채점 불가 - 응답 파싱 실패" },
+          yInterceptCorrect:  { passed: false, score: 0, comment: "채점 불가 - 응답 파싱 실패" },
+          shapeCorrect:       { passed: false, score: 0, comment: "채점 불가 - 응답 파싱 실패" },
         },
         score: 0,
-        maxScore: 4,
+        maxScore: 3,
         feedback:
           "⚠️ GPT의 응답이 예상한 JSON 형식이 아니었습니다.\n\n원본 응답:\n" +
           rawContent,
@@ -1238,13 +1272,12 @@ async function callGptVisionApi(payload) {
     console.error("❌ GPT Vision 호출 중 네트워크/기타 오류:", err);
     return {
       checklist: {
-        graphMatch: { passed: false, score: 0, comment: "채점 불가 - 네트워크 오류" },
-        vertexDesc: { passed: false, score: 0, comment: "채점 불가 - 네트워크 오류" },
-        yInterceptDesc: { passed: false, score: 0, comment: "채점 불가 - 네트워크 오류" },
-        axisDesc: { passed: false, score: 0, comment: "채점 불가 - 네트워크 오류" },
+        vertexCorrect:      { passed: false, score: 0, comment: "채점 불가 - 네트워크 오류" },
+        yInterceptCorrect:  { passed: false, score: 0, comment: "채점 불가 - 네트워크 오류" },
+        shapeCorrect:       { passed: false, score: 0, comment: "채점 불가 - 네트워크 오류" },
       },
       score: 0,
-      maxScore: 4,
+      maxScore: 3,
       feedback:
         "⚠️ GPT Vision 호출 중 오류가 발생했습니다.\n" +
         (err.message || err.toString()),
@@ -1284,8 +1317,10 @@ function initSubmitForm(session) {
       studentName: session.studentName,
       problemId: session.problemId || 'random',
       problemLabel: problemLabel,
+      problemText: problemText,
       problem: generatedProblem, // 문제 객체 저장
       description,
+      stepAnswers: loadStepAnswers(),
       imageDataUrl,
       submittedAt: new Date().toISOString(),
     };
@@ -1298,6 +1333,7 @@ function initSubmitForm(session) {
     const gptResult = await callGptVisionApi({
       problemId: submission.problemId,
       problemText: problemText,
+      problem: generatedProblem,
       studentInfo: {
         id: submission.studentId,
         name: submission.studentName,
@@ -1318,10 +1354,9 @@ function initSubmitForm(session) {
     let checklistHTML = '';
     if (gptResult.checklist) {
       const checklistItems = [
-        { key: 'graphMatch', label: '포물선이 정답과 일치' },
-        { key: 'vertexDesc', label: '설명: 꼭짓점 위치' },
-        { key: 'yInterceptDesc', label: '설명: y절편' },
-        { key: 'axisDesc', label: '설명: 축' },
+        { key: 'vertexCorrect',     label: '포물선의 꼭짓점이 올바른가?' },
+        { key: 'yInterceptCorrect', label: '포물선의 y절편이 올바른가?' },
+        { key: 'shapeCorrect',      label: '포물선의 개형(위로/아래로 볼록)이 올바른가?' },
       ];
       
       checklistHTML = '<div class="checklist-container"><h4>채점 체크리스트</h4><ul class="checklist">';
@@ -1808,10 +1843,18 @@ function initShapeButtons(session) {
           
           if (isCorrect) {
             const message = '잘했어요 👏';
-            const explanation = `그래프가 y축과 만나는 점을 y절편이라고 합니다. y좌표는 \\(${problem.yIntercept}\\)입니다.`;
+            const explanation = `그래프가 y축과 만나는 점을 y절편이라고 합니다. y절편의 값은\\(${problem.yIntercept}\\)입니다.`;
             const answerText = `(0, ${problem.yIntercept})`;
             
             const step3Section = document.querySelector('.step3-section');
+            
+            // 3단계 답안 저장
+            saveStepAnswer('step3', {
+              input: userY,
+              display: answerText,
+              correct: true,
+              correctAnswer: `(0, ${problem.yIntercept})`
+            });
             
             const afterAnimation = () => {
               showModal(true, message, explanation, () => {
@@ -1860,6 +1903,9 @@ function initShapeButtons(session) {
       
       // 버튼을 오른쪽 영역으로 이동하는 애니메이션
       animateButtonToRight(clickedButton, () => {
+        // 1단계 답안 저장
+        const choiceText = selectedShape === 'up' ? '위로 볼록' : '아래로 볼록';
+        saveStepAnswer('step1', { choice: choiceText, correct: true });
         showModal(true, message, explanation, () => {
           showStep2();
         });
@@ -1987,6 +2033,13 @@ function initShapeButtons(session) {
             }
             
             const explanation = `주어진 식을 완전제곱식으로 고쳐 쓰면 \\(${completeSquareForm}\\) 과 같고, 이때 \\((a, b)\\)에 해당하는 것은 \\(${userAnswerClean}\\)입니다.`;
+            
+            // 2단계 답안 저장
+            saveStepAnswer('step2', {
+              input: userAnswerClean,
+              correct: true,
+              correctAnswer: `(${h}, ${k})`
+            });
             
             // 2단계 입력 섹션을 오른쪽 영역으로 이동
             const step2Section = document.querySelector('.step2-section');
