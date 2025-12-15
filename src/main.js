@@ -1,23 +1,142 @@
 // main.js - 학생 페이지(student.html)에서 이차함수 그래프 그리기 및 제출 관리
 
-const PROBLEM_TEXTS = {
-  // (-3.5, -3.5) ~ (3.5, 3.5) 범위 내에서 꼭짓점, 축, 절편이 모두 정수로 포함되도록 설계
-  'free-fall':
-    '오른쪽 좌표평면에 \\(y = x^{2}\\) 의 그래프를 그려라.',
-  'inclined-plane':
-    '오른쪽 좌표평면에 \\(y = -(x - 1)^{2} + 1\\) 의 그래프를 그려라.',
-  'air-resistance':
-    '오른쪽 좌표평면에 \\(y = (x + 1)^{2} - 1\\) 의 그래프를 그려라.',
-  'spring-oscillation':
-    '오른쪽 좌표평면에 \\(y = -x^{2} + 2x\\) 의 그래프를 그려라.',
-};
+/**
+ * 랜덤 이차함수 문제 생성
+ * 규칙:
+ * 1. 최고차항이 1 또는 -1 (a = 1 또는 -1)
+ * 2. 꼭짓점이 (-2, -2) ~ (2, 2) 사이의 정수쌍 25개 중 하나 (단, x좌표 h ≠ 0, 즉 y축 위는 제외)
+ * 3. y절편값은 -3~3 사이의 정수
+ * 4. y = a(x-h)² + k 형태
+ */
+function generateRandomProblem() {
+  // 꼭짓점이 y축 위에 있지 않도록 h에서 0을 제외
+  const possibleH = [-2, -1, 1, 2];
+  const possibleK = [-2, -1, 0, 1, 2];
+  const possibleA = [1, -1];
+  
+  let validProblem = null;
+  let attempts = 0;
+  const maxAttempts = 100;
+  
+  while (!validProblem && attempts < maxAttempts) {
+    attempts++;
+    
+    // 랜덤으로 a, h, k 선택
+    const a = possibleA[Math.floor(Math.random() * possibleA.length)];
+    const h = possibleH[Math.floor(Math.random() * possibleH.length)];
+    const k = possibleK[Math.floor(Math.random() * possibleK.length)];
+    
+    // y절편 계산: y = a(0-h)² + k = a·h² + k
+    const yIntercept = a * h * h + k;
+    
+    // y절편이 -3~3 사이 정수인지 확인
+    // y=x²와 y=-x² 제외 (h=0, k=0인 경우 제외)
+    if (yIntercept >= -3 && yIntercept <= 3 && Number.isInteger(yIntercept)) {
+      if (h === 0 && k === 0) {
+        continue; // y=x² 또는 y=-x² 제외
+      }
+      validProblem = { a, h, k, yIntercept };
+      break;
+    }
+  }
+  
+  // 최대 시도 횟수 내에 찾지 못한 경우 기본값 반환
+  if (!validProblem) {
+    validProblem = { a: 1, h: 0, k: 0, yIntercept: 0 };
+  }
+  
+  return validProblem;
+}
 
-const PROBLEM_LABELS = {
-  'free-fall': '기본형 그래프 y = x^2',
-  'inclined-plane': '아래로 볼록 그래프 y = -(x - 1)^2 + 1',
-  'air-resistance': '위로 볼록 그래프 y = (x + 1)^2 - 1',
-  'spring-oscillation': '일반형 그래프 y = -x^2 + 2x',
-};
+/**
+ * 문제 객체를 LaTeX 수식 문자열로 변환 (전개된 형태)
+ */
+function formatProblemText(problem) {
+  const { a, h, k } = problem;
+  
+  // y = a(x-h)² + k 를 y = ax² + bx + c 형태로 전개
+  const b = -2 * a * h; // x의 계수
+  const c = a * h * h + k; // 상수항
+  
+  let expression = '';
+  
+  // ax² 항
+  if (a === 1) {
+    expression += 'x^{2}';
+  } else if (a === -1) {
+    expression += '-x^{2}';
+  } else {
+    expression += `${a}x^{2}`;
+  }
+  
+  // bx 항
+  if (b > 0) {
+    expression += ` + ${b}x`;
+  } else if (b < 0) {
+    expression += ` - ${Math.abs(b)}x`;
+  }
+  
+  // c 항
+  if (c > 0) {
+    expression += ` + ${c}`;
+  } else if (c < 0) {
+    expression += ` - ${Math.abs(c)}`;
+  }
+  
+  return `순서에 따라 \\(y = ${expression}\\) 의 그래프를 그려봅시다.`;
+}
+
+/**
+ * 문제 객체를 라벨 문자열로 변환
+ */
+function formatProblemLabel(problem) {
+  const { a, h, k } = problem;
+  
+  let expression = '';
+  
+  if (h === 0) {
+    if (a === 1) {
+      if (k === 0) {
+        expression = 'x²';
+      } else if (k > 0) {
+        expression = `x² + ${k}`;
+      } else {
+        expression = `x² - ${Math.abs(k)}`;
+      }
+    } else {
+      if (k === 0) {
+        expression = '-x²';
+      } else if (k > 0) {
+        expression = `-x² + ${k}`;
+      } else {
+        expression = `-x² - ${Math.abs(k)}`;
+      }
+    }
+  } else {
+    // h ≠ 0인 경우
+    const hPart = h < 0 ? `(x + ${Math.abs(h)})` : `(x - ${h})`;
+    
+    if (a === 1) {
+      if (k === 0) {
+        expression = `${hPart}²`;
+      } else if (k > 0) {
+        expression = `${hPart}² + ${k}`;
+      } else {
+        expression = `${hPart}² - ${Math.abs(k)}`;
+      }
+    } else {
+      if (k === 0) {
+        expression = `-${hPart}²`;
+      } else if (k > 0) {
+        expression = `-${hPart}² + ${k}`;
+      } else {
+        expression = `-${hPart}² - ${Math.abs(k)}`;
+      }
+    }
+  }
+  
+  return `y = ${expression}`;
+}
 
 function loadSession() {
   const raw = localStorage.getItem('fbd-current-session');
@@ -43,11 +162,19 @@ function initProblemPanel(session) {
     return;
   }
 
-  const problemId = session.problemId;
+  // 랜덤 문제 생성
+  const problem = generateRandomProblem();
+  const problemText = formatProblemText(problem);
+  const problemLabel = formatProblemLabel(problem);
+  
+  // 세션에 문제 정보 저장 (나중에 제출 시 사용)
+  session.generatedProblem = problem;
+  session.problemLabel = problemLabel;
+  localStorage.setItem('fbd-current-session', JSON.stringify(session));
 
   infoEl.textContent = `학번 ${session.studentId} / 이름 ${session.studentName}`;
 
-  textEl.innerHTML = PROBLEM_TEXTS[problemId] || '선택된 문제 정보를 불러올 수 없습니다.';
+  textEl.innerHTML = problemText;
 
   // MathJax로 수식 렌더링 - MathJax가 준비될 때까지 기다림
   const renderMath = () => {
@@ -108,6 +235,74 @@ function initProblemPanel(session) {
       };
       setTimeout(retry, 100);
     }
+  };
+
+  // 3단계를 오른쪽 단서 영역으로 이동하는 애니메이션 함수 (2단계와 동일한 방식)
+  const animateStep3ToRight = (step3Section, answerText, callback) => {
+    const drawingPanel = document.querySelector('.drawing-panel');
+    if (!drawingPanel) {
+      callback();
+      return;
+    }
+    
+    const clueList = drawingPanel.querySelector('#clue-list');
+    const targetContainer = clueList || drawingPanel;
+    
+    const originalRect = step3Section.getBoundingClientRect();
+    const originalParent = step3Section.parentElement;
+    const originalStyle = {
+      position: step3Section.style.position,
+      top: step3Section.style.top,
+      left: step3Section.style.left,
+      width: step3Section.style.width,
+      height: step3Section.style.height,
+      margin: step3Section.style.margin,
+      zIndex: step3Section.style.zIndex,
+    };
+    
+    // 절대 위치로 고정
+    step3Section.style.position = 'fixed';
+    step3Section.style.top = `${originalRect.top}px`;
+    step3Section.style.left = `${originalRect.left}px`;
+    step3Section.style.width = `${originalRect.width}px`;
+    step3Section.style.height = `${originalRect.height}px`;
+    step3Section.style.margin = '0';
+    step3Section.style.zIndex = '1000';
+    step3Section.style.transition = 'all 0.8s cubic-bezier(0.4, 0, 0.2, 1)';
+    
+    // 원본 자리 확보
+    const placeholder = document.createElement('div');
+    placeholder.style.width = `${originalRect.width}px`;
+    placeholder.style.height = `${originalRect.height}px`;
+    placeholder.style.visibility = 'hidden';
+    originalParent.insertBefore(placeholder, step3Section);
+    
+    // 목표 위치 계산
+    const targetRect = targetContainer.getBoundingClientRect();
+    const targetTop = targetRect.top + 20;
+    const targetLeft = targetRect.left + (targetRect.width / 2) - (originalRect.width / 2);
+    
+    requestAnimationFrame(() => {
+      step3Section.style.top = `${targetTop}px`;
+      step3Section.style.left = `${targetLeft}px`;
+      step3Section.style.transform = 'scale(0.9)';
+      
+      setTimeout(() => {
+        // 스타일 복원
+        Object.keys(originalStyle).forEach(key => {
+          step3Section.style[key] = originalStyle[key];
+        });
+        step3Section.style.transition = '';
+        step3Section.style.transform = '';
+        placeholder.remove();
+        
+        // 단서 배지 추가
+        addStep3Badge(answerText);
+        // 원래 3단계 섹션 제거하여 오른쪽 이동 효과 마무리
+        step3Section.remove();
+        callback();
+      }, 800);
+    });
   };
   
   renderMath();
@@ -329,7 +524,10 @@ function initCanvas() {
   const canvas = document.getElementById('fbd-canvas');
   const clearBtn = document.getElementById('clear-canvas');
   const drawGraphBtn = document.getElementById('draw-graph');
+  const checkGraphBtn = document.getElementById('check-graph');
   const toolButtons = document.querySelectorAll('.tool-btn');
+  const vertexBtn = document.getElementById('tool-vertex');
+  const pointBtn = document.getElementById('tool-point');
   
   console.log('initCanvas called');
   console.log('canvas:', canvas);
@@ -348,6 +546,10 @@ function initCanvas() {
   let startPoint = null;
   let drawnElements = []; // 그려진 요소들 저장
   let previewElement = null; // 미리보기 요소
+  let pointBtnVisible = false;
+  // 꼭짓점과 지나는 점을 각각 별도로 저장
+  let vertexPoint = null;
+  let passingPoint = null;
 
   // 좌표계 설정
   const coordSystem = getCoordinateSystem(canvas);
@@ -443,9 +645,44 @@ function initCanvas() {
 
   // 미리보기 그리기 함수
   const drawPreview = (ctx, element, coordSystem) => {
-    if (element.type === 'point') {
+    if (element.type === 'point' || element.type === 'pointWithCurve') {
       const { pixelX, pixelY, x, y } = element;
-      // 더 크고 굵은 반투명한 원으로 표시
+      
+      // pointWithCurve 타입일 때는, 현재 꼭짓점과 이 지나는 점을 이용해
+      // 희미한 이차함수 곡선을 미리 보여준다.
+      if (element.type === 'pointWithCurve' && vertexPoint) {
+        const h = vertexPoint.x;
+        const k = vertexPoint.y;
+        const denom = (x - h) ** 2;
+        if (Math.abs(denom) >= 0.001) {
+          const a = (y - k) / denom;
+          if (!isNaN(a) && isFinite(a)) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(37, 99, 235, 0.45)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            let first = true;
+            const step = 0.1;
+            for (let xx = coordSystem.xMin; xx <= coordSystem.xMax; xx += step) {
+              const yy = a * (xx - h) ** 2 + k;
+              if (yy >= coordSystem.yMin && yy <= coordSystem.yMax) {
+                const px = coordSystem.toPixelX(xx);
+                const py = coordSystem.toPixelY(yy);
+                if (first) {
+                  ctx.moveTo(px, py);
+                  first = false;
+                } else {
+                  ctx.lineTo(px, py);
+                }
+              }
+            }
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+      }
+      
+      // 더 크고 굵은 반투명한 원으로 표시 (기존 포인트 미리보기)
       ctx.fillStyle = 'rgba(29, 78, 216, 0.6)';
       ctx.beginPath();
       ctx.arc(pixelX, pixelY, 10, 0, Math.PI * 2);
@@ -491,12 +728,34 @@ function initCanvas() {
     }
   };
 
+  // 점 버튼 숨김 (꼭짓점 선택 후 노출)
+  if (pointBtn) {
+    pointBtn.style.display = 'none';
+  }
+
+  const activateMode = (modeBtn) => {
+    toolButtons.forEach(b => b.classList.remove('active'));
+    if (modeBtn) {
+      modeBtn.classList.add('active');
+      currentMode = modeBtn.dataset.mode;
+    }
+  };
+
+  const showPointButton = () => {
+    if (pointBtn && !pointBtnVisible) {
+      pointBtn.style.display = 'inline-block';
+      pointBtnVisible = true;
+      // 자동으로 지나는 점 모드로 전환
+      activateMode(pointBtn);
+    }
+  };
+
   // 모드 버튼 이벤트
   toolButtons.forEach(btn => {
     btn.addEventListener('click', () => {
-      toolButtons.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentMode = btn.dataset.mode;
+      // 숨겨진 버튼 클릭 방지
+      if (btn === pointBtn && !pointBtnVisible) return;
+      activateMode(btn);
     });
   });
 
@@ -534,13 +793,26 @@ function initCanvas() {
     // 점 모드: 가장 가까운 점 미리보기
     const nearest = findNearestIntegerCoord(pos.mathX, pos.mathY, currentMode, coordSystem, pos.pixelX, pos.pixelY);
     if (nearest.valid) {
-      previewElement = {
-        type: 'point',
-        x: nearest.x,
-        y: nearest.y,
-        pixelX: nearest.pixelX,
-        pixelY: nearest.pixelY
-      };
+      // 꼭짓점 모드일 때는 기존과 동일하게 점만 미리보기
+      if (currentMode === 'vertex') {
+        previewElement = {
+          type: 'point',
+          x: nearest.x,
+          y: nearest.y,
+          pixelX: nearest.pixelX,
+          pixelY: nearest.pixelY
+        };
+      } else if (currentMode === 'point') {
+        // 지나는 점 모드이고, 꼭짓점이 이미 있을 때는
+        // 해당 점을 지나는 이차함수 곡선까지 함께 미리 보기
+        previewElement = {
+          type: vertexPoint ? 'pointWithCurve' : 'point',
+          x: nearest.x,
+          y: nearest.y,
+          pixelX: nearest.pixelX,
+          pixelY: nearest.pixelY
+        };
+      }
     } else {
       previewElement = null;
     }
@@ -552,6 +824,12 @@ function initCanvas() {
     event.preventDefault();
     const pos = getMathPos(event);
     
+    // 꼭짓점이 이미 있고, 여전히 꼭짓점 모드라면 더 이상 덮어쓰지 않음 (대신 지나는 점 버튼만 노출)
+    if (vertexPoint && currentMode === 'vertex') {
+      showPointButton();
+      return;
+    }
+    
     // 점 모드: 가장 가까운 점 찾아서 찍기
     const nearest = findNearestIntegerCoord(pos.mathX, pos.mathY, currentMode, coordSystem, pos.pixelX, pos.pixelY);
     
@@ -560,30 +838,44 @@ function initCanvas() {
       if (nearest.x >= coordSystem.xMin && nearest.x <= coordSystem.xMax &&
           nearest.y >= coordSystem.yMin && nearest.y <= coordSystem.yMax) {
         
-        // 점 개수 제한: 꼭짓점 1개, 지나는 점 1개
-        const vertices = drawnElements.filter(e => e.type === 'point' && e.mode === 'vertex');
-        const points = drawnElements.filter(e => e.type === 'point' && e.mode === 'point');
-        
         if (currentMode === 'vertex') {
-          // 꼭짓점은 1개만
-          if (vertices.length >= 1) {
-            // 기존 꼭짓점 제거
-            drawnElements = drawnElements.filter(e => !(e.type === 'point' && e.mode === 'vertex'));
+          // 꼭짓점은 한 번만: 이미 있으면 무시
+          if (vertexPoint) {
+            return;
           }
+          vertexPoint = { x: nearest.x, y: nearest.y };
+          // 꼭짓점을 찍으면 지나는 점 선택 버튼을 노출
+          showPointButton();
+          
+          // drawnElements에 꼭짓점 포인트 동기화
+          drawnElements = drawnElements.filter(e => !(e.type === 'point' && e.mode === 'vertex'));
+          drawnElements.push({
+            type: 'point',
+            mode: 'vertex',
+            x: vertexPoint.x,
+            y: vertexPoint.y
+          });
         } else if (currentMode === 'point') {
-          // 지나는 점은 1개만
-          if (points.length >= 1) {
-            // 기존 지나는 점 제거
-            drawnElements = drawnElements.filter(e => !(e.type === 'point' && e.mode === 'point'));
+          // 꼭짓점이 먼저 있어야 지나는 점 입력 허용
+          if (!vertexPoint) return;
+          
+          // 꼭짓점과 동일한 좌표는 무시 (꼭짓점이 움직이지 않도록)
+          if (nearest.x === vertexPoint.x && nearest.y === vertexPoint.y) {
+            return;
           }
+          
+          passingPoint = { x: nearest.x, y: nearest.y };
+          
+          // 지나는 점은 1개만 유지
+          drawnElements = drawnElements.filter(e => !(e.type === 'point' && e.mode === 'point'));
+          drawnElements.push({
+            type: 'point',
+            mode: 'point',
+            x: passingPoint.x,
+            y: passingPoint.y
+          });
         }
         
-        drawnElements.push({
-          type: 'point',
-          mode: currentMode,
-          x: nearest.x,
-          y: nearest.y
-        });
         redraw();
       }
     }
@@ -610,6 +902,12 @@ function initCanvas() {
 
   const clearCanvas = () => {
     drawnElements = [];
+    vertexPoint = null;
+    passingPoint = null;
+    // 꼭짓점을 다시 먼저 찍도록 초기화
+    pointBtnVisible = false;
+    if (pointBtn) pointBtn.style.display = 'none';
+    if (vertexBtn) activateMode(vertexBtn);
     redraw();
   };
 
@@ -618,41 +916,22 @@ function initCanvas() {
     console.log('drawQuadraticGraph called');
     console.log('drawnElements:', drawnElements);
     
-    // 입력된 요소들에서 정보 추출
-    const vertices = drawnElements.filter(e => e.type === 'point' && e.mode === 'vertex');
-    const points = drawnElements.filter(e => e.type === 'point' && e.mode === 'point');
-    
-    console.log('vertices:', vertices);
-    console.log('points:', points);
-
-    // 꼭짓점 찾기
-    let vertex = null;
-    if (vertices.length > 0) {
-      vertex = { x: vertices[0].x, y: vertices[0].y };
-    }
-
-    // 지나는 점 찾기
-    let passingPoint = null;
-    if (points.length > 0) {
-      passingPoint = { x: points[0].x, y: points[0].y };
-    }
-
-    // 꼭짓점과 지나는 점이 모두 있어야 함
-    if (!vertex || !passingPoint) {
+    // 별도 상태로 저장된 꼭짓점/지나는 점 사용
+    if (!vertexPoint || !passingPoint) {
       alert('그래프를 그리기 위한 정보가 부족합니다.\n꼭짓점과 꼭짓점 외에 지나는 점을 모두 입력해주세요.');
       return;
     }
 
     // 꼭짓점과 지나는 점이 같은 경우
-    if (vertex.x === passingPoint.x && vertex.y === passingPoint.y) {
+    if (vertexPoint.x === passingPoint.x && vertexPoint.y === passingPoint.y) {
       alert('꼭짓점과 지나는 점이 같을 수 없습니다.\n다른 점을 선택해주세요.');
       return;
     }
 
     // 이차함수 계산: y = a(x-h)^2 + k 형태
     // 꼭짓점이 (h, k)
-    const h = vertex.x;
-    const k = vertex.y;
+    const h = vertexPoint.x;
+    const k = vertexPoint.y;
 
     // 지나는 점 (x₁, y₁)을 이용하여 a 계산
     // y₁ = a(x₁ - h)² + k
@@ -675,11 +954,11 @@ function initCanvas() {
     // 그래프 요소 추가
     const graphElement = {
       type: 'quadratic',
-      a: a,
-      h: h,
-      k: k,
-      vertex: vertex,
-      passingPoint: passingPoint
+      a,
+      h,
+      k,
+      vertex: { x: vertexPoint.x, y: vertexPoint.y },
+      passingPoint: { x: passingPoint.x, y: passingPoint.y }
     };
 
     // 기존 그래프 제거
@@ -689,6 +968,68 @@ function initCanvas() {
   };
 
   clearBtn.addEventListener('click', clearCanvas);
+  
+  // 그래프 정답 확인 함수
+  const checkGraphAnswer = () => {
+    // 점이 둘 다 찍혀야 확인 가능
+    if (!vertexPoint || !passingPoint) {
+      if (window.shapeShowModal) {
+        window.shapeShowModal(false, '먼저 꼭짓점과 꼭짓점 외에 지나는 점을 모두 찍어주세요.', '');
+      } else {
+        alert('먼저 꼭짓점과 꼭짓점 외에 지나는 점을 모두 찍어주세요.');
+      }
+      return;
+    }
+    
+    // 세션에서 정답 함수 정보 가져오기
+    const session = loadSession();
+    const problem = session?.generatedProblem;
+    if (!problem) {
+      if (window.shapeShowModal) {
+        window.shapeShowModal(false, '문제 정보를 불러오지 못했습니다.', '');
+      } else {
+        alert('문제 정보를 불러오지 못했습니다.');
+      }
+      return;
+    }
+    
+    const { a, h, k } = problem;
+    
+    // 1단계: 꼭짓점 검사
+    const isVertexCorrect =
+      vertexPoint.x === h &&
+      vertexPoint.y === k;
+    
+    // 2단계: 지나는 점 검사 (이차함수 위의 점인지)
+    const expectedY = a * (passingPoint.x - h) ** 2 + k;
+    const isPassingPointCorrect = passingPoint.y === expectedY;
+    
+    if (isVertexCorrect && isPassingPointCorrect) {
+      const message = '잘했어요 👏';
+      const explanation = '꼭짓점과 꼭짓점 외에 지나는 점이 모두 올바르게 선택되었습니다.';
+      
+      // 설명 입력 영역(그래프에 대한 설명)을 노출
+      const answerForm = document.getElementById('answer-form');
+      if (answerForm) {
+        answerForm.classList.remove('hidden');
+        // 살짝 스크롤하여 학생이 보기 쉽게
+        answerForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      
+      if (window.shapeShowModal) {
+        window.shapeShowModal(true, message, explanation);
+      } else {
+        alert('잘했어요! 꼭짓점과 지나는 점이 모두 올바릅니다.');
+      }
+    } else {
+      const message = '오른쪽 영역의 단서를 잘 확인하세요.';
+      if (window.shapeShowModal) {
+        window.shapeShowModal(false, message, '');
+      } else {
+        alert(message);
+      }
+    }
+  };
   
   // 그래프 그리기 버튼 이벤트 핸들러
   const handleDrawGraph = (e) => {
@@ -716,6 +1057,15 @@ function initCanvas() {
     drawGraphBtn.addEventListener('click', handleDrawGraph, { capture: false });
   } else {
     console.error('drawGraphBtn is null!');
+  }
+  
+  // 확인 버튼 이벤트 바인딩
+  if (checkGraphBtn) {
+    checkGraphBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      checkGraphAnswer();
+    });
   }
   
   // 이벤트 위임 (버튼이 나중에 생성될 경우 대비)
@@ -923,12 +1273,18 @@ function initSubmitForm(session) {
     // 캔버스 이미지를 base64 데이터 URL로 변환
     const imageDataUrl = canvas.toDataURL('image/png');
 
+    // 세션에서 생성된 문제 정보 가져오기
+    const generatedProblem = session.generatedProblem || generateRandomProblem();
+    const problemText = formatProblemText(generatedProblem);
+    const problemLabel = session.problemLabel || formatProblemLabel(generatedProblem);
+    
     const submission = {
       id: `${session.studentId}-${Date.now()}`,
       studentId: session.studentId,
       studentName: session.studentName,
-      problemId: session.problemId,
-      problemLabel: PROBLEM_LABELS[session.problemId] || session.problemId,
+      problemId: session.problemId || 'random',
+      problemLabel: problemLabel,
+      problem: generatedProblem, // 문제 객체 저장
       description,
       imageDataUrl,
       submittedAt: new Date().toISOString(),
@@ -941,7 +1297,7 @@ function initSubmitForm(session) {
     
     const gptResult = await callGptVisionApi({
       problemId: submission.problemId,
-      problemText: PROBLEM_TEXTS[submission.problemId],
+      problemText: problemText,
       studentInfo: {
         id: submission.studentId,
         name: submission.studentName,
@@ -999,11 +1355,748 @@ function initSubmitForm(session) {
   });
 }
 
+/**
+ * 그래프 모양 선택 버튼 초기화
+ */
+function initShapeButtons(session) {
+  const convexUpBtn = document.getElementById('shape-convex-up');
+  const convexDownBtn = document.getElementById('shape-convex-down');
+  
+  if (!convexUpBtn || !convexDownBtn) return;
+  
+  // 세션에서 생성된 문제 정보 가져오기
+  const problem = session?.generatedProblem;
+  if (!problem) {
+    console.warn('생성된 문제 정보를 찾을 수 없습니다.');
+    return;
+  }
+  
+  const { a } = problem;
+  // a > 0이면 아래로 볼록, a < 0이면 위로 볼록
+  const correctAnswer = a > 0 ? 'down' : 'up'; // 'down' = 아래로 볼록, 'up' = 위로 볼록
+  
+  // 커스텀 모달 표시 함수
+  const showModal = (isCorrect, message, explanation, onClose) => {
+    const modal = document.getElementById('shape-modal');
+    const modalIcon = modal.querySelector('.shape-modal-icon');
+    const modalTitle = modal.querySelector('.shape-modal-title');
+    const modalMessage = modal.querySelector('.shape-modal-message');
+    const closeBtn = modal.querySelector('.shape-modal-close');
+    
+    if (isCorrect) {
+      modalIcon.innerHTML = '✅';
+      modalIcon.className = 'shape-modal-icon correct';
+      modalTitle.textContent = '정답입니다!';
+      modalMessage.innerHTML = message + (explanation ? `<br><br>${explanation}` : '');
+    } else {
+      modalIcon.innerHTML = '💡';
+      modalIcon.className = 'shape-modal-icon incorrect';
+      modalTitle.textContent = '힌트';
+      modalMessage.innerHTML = message + (explanation ? `<br><br>${explanation}` : '');
+    }
+    
+    modal.classList.add('active');
+    
+    // MathJax 렌더링
+    if (window.MathJax && window.MathJax.typesetPromise) {
+      window.MathJax.typesetPromise([modalMessage]).catch((err) => {
+        console.error('MathJax 렌더링 오류:', err);
+      });
+    }
+    
+    // 닫기 버튼 클릭
+    const closeHandler = () => {
+      modal.classList.remove('active');
+      if (onClose) {
+        setTimeout(onClose, 300);
+      }
+    };
+    
+    closeBtn.onclick = closeHandler;
+    
+    // 오버레이 클릭
+    modal.querySelector('.shape-modal-overlay').onclick = closeHandler;
+  };
+  
+  // 다른 모듈(예: 캔버스 확인 버튼)에서도 동일한 모달을 사용할 수 있도록 전역에 노출
+  if (typeof window !== 'undefined') {
+    window.shapeShowModal = showModal;
+  }
+  
+  // 버튼을 오른쪽 영역으로 이동하는 애니메이션 함수
+  const animateButtonToRight = (button, callback) => {
+    const drawingPanel = document.querySelector('.drawing-panel');
+    if (!drawingPanel) {
+      callback();
+      return;
+    }
+    
+    // 애니메이션 전에 아이콘과 라벨 정보 미리 저장
+    const shapeLabel = button.querySelector('.shape-label');
+    const shapeIcon = button.querySelector('.shape-icon');
+    const labelText = shapeLabel?.textContent || '';
+    const iconHTML = shapeIcon ? shapeIcon.outerHTML : '';
+    
+    // 버튼의 원래 위치 저장
+    const originalRect = button.getBoundingClientRect();
+    const originalParent = button.parentElement;
+    const originalStyle = {
+      position: button.style.position,
+      top: button.style.top,
+      left: button.style.left,
+      width: button.style.width,
+      height: button.style.height,
+      margin: button.style.margin,
+      zIndex: button.style.zIndex,
+    };
+    
+    // 버튼을 절대 위치로 변경하고 원래 위치에 고정
+    button.style.position = 'fixed';
+    button.style.top = `${originalRect.top}px`;
+    button.style.left = `${originalRect.left}px`;
+    button.style.width = `${originalRect.width}px`;
+    button.style.height = `${originalRect.height}px`;
+    button.style.margin = '0';
+    button.style.zIndex = '1000';
+    button.style.transition = 'all 0.8s cubic-bezier(0.4, 0, 0.2, 1)';
+    
+    // 원본 버튼을 숨김 (레이아웃 유지)
+    const placeholder = document.createElement('div');
+    placeholder.style.width = `${originalRect.width}px`;
+    placeholder.style.height = `${originalRect.height}px`;
+    placeholder.style.visibility = 'hidden';
+    originalParent.insertBefore(placeholder, button);
+    
+    // 오른쪽 영역의 상단 위치 계산
+    const targetRect = drawingPanel.getBoundingClientRect();
+    const targetTop = targetRect.top + 20;
+    const targetLeft = targetRect.left + (targetRect.width / 2) - (originalRect.width / 2);
+    
+    // 애니메이션 시작
+    requestAnimationFrame(() => {
+      button.style.top = `${targetTop}px`;
+      button.style.left = `${targetLeft}px`;
+      button.style.transform = 'scale(0.9)';
+      
+      // 애니메이션 완료 후
+      setTimeout(() => {
+        // 원래 위치로 복원
+        Object.keys(originalStyle).forEach(key => {
+          button.style[key] = originalStyle[key];
+        });
+        button.style.transition = '';
+        button.style.transform = '';
+        placeholder.remove();
+        
+        // 오른쪽 영역에 작은 버튼 추가 (선택 표시)
+        const successBadge = document.createElement('div');
+        successBadge.className = 'shape-success-badge';
+        successBadge.innerHTML = `
+          <div class="shape-success-label">그래프의 모양 : ${labelText}</div>
+        `;
+        
+        // 단서 보드(clue-list)에 배치
+        const clueList = drawingPanel.querySelector('#clue-list');
+        if (clueList) {
+          clueList.appendChild(successBadge);
+        } else {
+          drawingPanel.insertBefore(successBadge, drawingPanel.firstChild);
+        }
+        
+        callback();
+      }, 800);
+    });
+  };
+  
+  // 2단계 정답을 오른쪽 영역으로 이동하는 애니메이션 함수
+  const animateStep2ToRight = (step2Section, answerText, callback) => {
+    const drawingPanel = document.querySelector('.drawing-panel');
+    if (!drawingPanel) {
+      callback();
+      return;
+    }
+    
+    // 2단계 섹션의 원래 위치 저장
+    const originalRect = step2Section.getBoundingClientRect();
+    const originalParent = step2Section.parentElement;
+    const originalStyle = {
+      position: step2Section.style.position,
+      top: step2Section.style.top,
+      left: step2Section.style.left,
+      width: step2Section.style.width,
+      height: step2Section.style.height,
+      margin: step2Section.style.margin,
+      zIndex: step2Section.style.zIndex,
+    };
+    
+    // 섹션을 절대 위치로 변경하고 원래 위치에 고정
+    step2Section.style.position = 'fixed';
+    step2Section.style.top = `${originalRect.top}px`;
+    step2Section.style.left = `${originalRect.left}px`;
+    step2Section.style.width = `${originalRect.width}px`;
+    step2Section.style.height = `${originalRect.height}px`;
+    step2Section.style.margin = '0';
+    step2Section.style.zIndex = '1000';
+    step2Section.style.transition = 'all 0.8s cubic-bezier(0.4, 0, 0.2, 1)';
+    
+    // 원본 섹션을 숨김 (레이아웃 유지)
+    const placeholder = document.createElement('div');
+    placeholder.style.width = `${originalRect.width}px`;
+    placeholder.style.height = `${originalRect.height}px`;
+    placeholder.style.visibility = 'hidden';
+    originalParent.insertBefore(placeholder, step2Section);
+    
+    // 오른쪽 영역의 위치 계산 (1단계 badge 아래)
+    const existingBadge = drawingPanel.querySelector('.shape-success-badge');
+    let targetTop = drawingPanel.getBoundingClientRect().top + 20;
+    
+    if (existingBadge) {
+      const badgeRect = existingBadge.getBoundingClientRect();
+      targetTop = badgeRect.bottom + 20;
+    }
+    
+    const targetLeft = drawingPanel.getBoundingClientRect().left + (drawingPanel.getBoundingClientRect().width / 2) - (originalRect.width / 2);
+    
+    // 애니메이션 시작
+    requestAnimationFrame(() => {
+      step2Section.style.top = `${targetTop}px`;
+      step2Section.style.left = `${targetLeft}px`;
+      step2Section.style.transform = 'scale(0.9)';
+      
+      // 애니메이션 완료 후
+      setTimeout(() => {
+        // 원래 위치로 복원
+        Object.keys(originalStyle).forEach(key => {
+          step2Section.style[key] = originalStyle[key];
+        });
+        step2Section.style.transition = '';
+        step2Section.style.transform = '';
+        placeholder.remove();
+        
+        // 오른쪽 영역에 2단계 정답 badge 추가
+        const step2Badge = document.createElement('div');
+        step2Badge.className = 'shape-success-badge step2-badge';
+        step2Badge.innerHTML = `
+          <div class="shape-success-label">그래프의 꼭짓점의 좌표 : \\(${answerText}\\)</div>
+        `;
+        
+        // 1단계 badge 다음에 추가
+        if (existingBadge) {
+          existingBadge.insertAdjacentElement('afterend', step2Badge);
+        } else {
+          // 1단계 badge가 없으면 h2 다음에 추가
+          const h2Element = drawingPanel.querySelector('h2');
+          if (h2Element) {
+            h2Element.insertAdjacentElement('afterend', step2Badge);
+          } else {
+            drawingPanel.insertBefore(step2Badge, drawingPanel.firstChild);
+          }
+        }
+        
+        // MathJax 렌더링
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          window.MathJax.typesetPromise([step2Badge]).catch((err) => {
+            console.error('MathJax 렌더링 오류:', err);
+          });
+        }
+        
+        callback();
+      }, 800);
+    });
+  };
+  
+  // 3단계 정답을 오른쪽 영역으로 수집
+  const addStep3Badge = (answerText) => {
+    const drawingPanel = document.querySelector('.drawing-panel');
+    if (!drawingPanel) return;
+    
+    const existing = drawingPanel.querySelector('.step3-badge');
+    if (existing) {
+      const answerEl = existing.querySelector('.step3-answer-text');
+      if (answerEl) answerEl.textContent = answerText;
+      return;
+    }
+    
+    const badge = document.createElement('div');
+    badge.className = 'shape-success-badge step3-badge';
+    badge.innerHTML = `
+      <div class="shape-success-label">그래프의 y절편 : ${answerText}</div>
+    `;
+    
+    const clueList = drawingPanel.querySelector('#clue-list');
+    if (clueList) {
+      clueList.appendChild(badge);
+    } else {
+      drawingPanel.insertBefore(badge, drawingPanel.firstChild);
+    }
+  };
+
+  // 3단계를 오른쪽 단서 영역으로 이동하는 애니메이션 함수 (로컬)
+  const animateStep3ToRightLocal = (step3Section, answerText, callback) => {
+    const drawingPanel = document.querySelector('.drawing-panel');
+    if (!drawingPanel) {
+      callback();
+      return;
+    }
+    
+    const clueList = drawingPanel.querySelector('#clue-list');
+    const targetContainer = clueList || drawingPanel;
+    
+    const originalRect = step3Section.getBoundingClientRect();
+    const originalParent = step3Section.parentElement;
+    const originalStyle = {
+      position: step3Section.style.position,
+      top: step3Section.style.top,
+      left: step3Section.style.left,
+      width: step3Section.style.width,
+      height: step3Section.style.height,
+      margin: step3Section.style.margin,
+      zIndex: step3Section.style.zIndex,
+    };
+    
+    step3Section.style.position = 'fixed';
+    step3Section.style.top = `${originalRect.top}px`;
+    step3Section.style.left = `${originalRect.left}px`;
+    step3Section.style.width = `${originalRect.width}px`;
+    step3Section.style.height = `${originalRect.height}px`;
+    step3Section.style.margin = '0';
+    step3Section.style.zIndex = '1000';
+    step3Section.style.transition = 'all 0.8s cubic-bezier(0.4, 0, 0.2, 1)';
+    
+    const placeholder = document.createElement('div');
+    placeholder.style.width = `${originalRect.width}px`;
+    placeholder.style.height = `${originalRect.height}px`;
+    placeholder.style.visibility = 'hidden';
+    originalParent.insertBefore(placeholder, step3Section);
+    
+    const targetRect = targetContainer.getBoundingClientRect();
+    const targetTop = targetRect.top + 20;
+    const targetLeft = targetRect.left + (targetRect.width / 2) - (originalRect.width / 2);
+    
+    requestAnimationFrame(() => {
+      step3Section.style.top = `${targetTop}px`;
+      step3Section.style.left = `${targetLeft}px`;
+      step3Section.style.transform = 'scale(0.9)';
+      
+      setTimeout(() => {
+        Object.keys(originalStyle).forEach(key => {
+          step3Section.style[key] = originalStyle[key];
+        });
+        step3Section.style.transition = '';
+        step3Section.style.transform = '';
+        placeholder.remove();
+        
+        addStep3Badge(answerText);
+        step3Section.remove();
+        callback();
+      }, 800);
+    });
+  };
+
+  // 4단계 표시 함수 (그리기 도구/좌표평면 공개)
+  const showStep4 = () => {
+    const problemPanel = document.querySelector('.problem-panel');
+    const contentGrid = document.querySelector('.content-two-columns');
+    const drawingPanel = document.querySelector('.drawing-panel');
+    const clueBoard = drawingPanel ? drawingPanel.querySelector('.clue-board') : null;
+    
+    if (problemPanel && !problemPanel.querySelector('.step4-section')) {
+      const step4Section = document.createElement('div');
+      step4Section.className = 'step3-section';
+      step4Section.innerHTML = `
+        <p class="step3-question">4단계. 이제 주어진 단서를 이용해 그래프를 그려봅시다.</p>
+      `;
+      problemPanel.appendChild(step4Section);
+    }
+    
+    if (drawingPanel) {
+      drawingPanel.classList.remove('locked');
+      drawingPanel.classList.remove('embed-left');
+      // 왼쪽 문제 패널 아래로 이동
+      if (problemPanel && drawingPanel.parentElement !== problemPanel) {
+        problemPanel.appendChild(drawingPanel);
+      }
+    }
+    
+    // 단서 보드를 오른쪽 전용 패널로 분리 (그리기 패널을 왼쪽으로 옮겨도 단서가 오른쪽에 남도록)
+    if (contentGrid && clueBoard) {
+      let cluePanel = document.querySelector('.clue-panel');
+      if (!cluePanel) {
+        cluePanel = document.createElement('section');
+        cluePanel.className = 'card clue-panel';
+        const header = document.createElement('h2');
+        header.textContent = '그래프 단서 모음';
+        cluePanel.appendChild(header);
+        contentGrid.appendChild(cluePanel);
+      }
+      // clue-board를 오른쪽 패널로 이동
+      cluePanel.appendChild(clueBoard);
+    }
+  };
+
+  // 3단계 표시 함수
+  const showStep3 = () => {
+    const step2Section = document.querySelector('.step2-section');
+    if (step2Section) {
+      step2Section.style.display = 'none';
+    }
+    
+    // 왼쪽 영역(problem-panel)에 3단계 표시
+    const problemPanel = document.querySelector('.problem-panel');
+    if (problemPanel && !problemPanel.querySelector('.step3-section')) {
+      const problem = session?.generatedProblem;
+      if (!problem) return;
+      
+      const step3Section = document.createElement('div');
+      step3Section.className = 'step3-section';
+      step3Section.innerHTML = `
+        <p class="step3-question">3단계. 그래프가 y축과 만나는 점의 y좌표를 구해봅시다. (예: 3)</p>
+        <div class="step3-input-section">
+          <input type="text" id="step3-answer" class="step3-input" placeholder="예: 3" />
+          <button id="step3-submit" class="btn primary step3-submit-btn" type="button">확인</button>
+        </div>
+      `;
+      
+      problemPanel.appendChild(step3Section);
+      
+      // MathJax 렌더링
+      if (window.MathJax && window.MathJax.typesetPromise) {
+        window.MathJax.typesetPromise([step3Section]).catch((err) => {
+          console.error('MathJax 렌더링 오류:', err);
+        });
+      }
+      
+      // 확인 버튼 이벤트
+      const submitBtn = document.getElementById('step3-submit');
+      const answerInput = document.getElementById('step3-answer');
+      
+      if (submitBtn && answerInput) {
+        submitBtn.addEventListener('click', () => {
+          const userAnswer = answerInput.value.trim();
+          
+          if (!userAnswer) {
+            showModal(false, '답을 입력해주세요.', 'y축과 만나는 점의 좌표를 (0, ?) 형태로 입력해주세요.');
+            return;
+          }
+          
+          // 정답: y절편 값
+          const correctY = problem.yIntercept;
+          
+          // 입력 정규화
+          const userAnswerClean = userAnswer.replace(/\s+/g, '');
+          
+          // 허용 형식: 숫자만 입력 (예: 3, -2, +1) 또는 (0, 숫자)
+          const numericOnly = /^([+-]?\d+)$/;
+          const tuplePattern = /^\(0\s*,\s*([+-]?\d+)\)$/;
+          
+          let userY = null;
+          if (numericOnly.test(userAnswerClean)) {
+            userY = parseInt(userAnswerClean, 10);
+          } else {
+            const match = userAnswerClean.match(tuplePattern);
+            if (match) {
+              userY = parseInt(match[1], 10);
+            }
+          }
+          
+          if (userY === null) {
+            showModal(false, '다시 생각해보세요.', 'y축과 만나는 점은 x좌표가 0입니다. y좌표만 입력하거나 (0, ?) 형태로 입력해주세요.');
+            return;
+          }
+          
+          const isCorrect = userY === problem.yIntercept;
+          
+          if (isCorrect) {
+            const message = '잘했어요 👏';
+            const explanation = `그래프가 y축과 만나는 점을 y절편이라고 합니다. y좌표는 \\(${problem.yIntercept}\\)입니다.`;
+            const answerText = `(0, ${problem.yIntercept})`;
+            
+            const step3Section = document.querySelector('.step3-section');
+            
+            const afterAnimation = () => {
+              showModal(true, message, explanation, () => {
+                answerInput.disabled = true;
+                submitBtn.disabled = true;
+                showStep4();
+              });
+            };
+            
+            // 애니메이션을 먼저 실행 (2단계와 동일한 흐름)
+            if (step3Section) {
+              animateStep3ToRightLocal(step3Section, answerText, afterAnimation);
+            } else {
+              addStep3Badge(answerText);
+              afterAnimation();
+            }
+          } else {
+            showModal(false, '다시 생각해보세요.', 'y절편을 구하려면 주어진 식에 \\(x=0\\)을 대입해보세요.');
+          }
+        });
+        
+        // Enter 키로도 제출 가능
+        answerInput.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') {
+            submitBtn.click();
+          }
+        });
+      }
+    }
+  };
+  
+  const handleShapeClick = (selectedShape) => {
+    const isCorrect = selectedShape === correctAnswer;
+    const clickedButton = selectedShape === 'up' ? convexUpBtn : convexDownBtn;
+    
+    if (isCorrect) {
+      const message = '잘하셨어요!';
+      const explanation = '이차함수에서 최고차항의 계수가 양수이면 아래로 볼록이고, 음수이면 위로 볼록입니다.';
+      
+      // 왼쪽 문항 fade out
+      const questionSection = document.querySelector('.shape-question-section');
+      if (questionSection) {
+        questionSection.style.transition = 'opacity 0.5s ease';
+        questionSection.style.opacity = '0';
+      }
+      
+      // 버튼을 오른쪽 영역으로 이동하는 애니메이션
+      animateButtonToRight(clickedButton, () => {
+        showModal(true, message, explanation, () => {
+          showStep2();
+        });
+      });
+    } else {
+      // 문제 정보 가져오기
+      let a;
+      try {
+        const problemDataStr = sessionStorage.getItem('generatedProblem');
+        if (problemDataStr) {
+          const problemData = JSON.parse(problemDataStr);
+          a = problemData.a;
+        } else {
+          // session에서 직접 가져오기
+          const session = loadSession();
+          a = session?.generatedProblem?.a;
+        }
+      } catch (e) {
+        console.error('문제 정보를 가져오는 중 오류:', e);
+        // 기본값 사용
+        a = problem?.a;
+      }
+      
+      // a 값이 없으면 함수 내부의 problem 사용
+      if (a === undefined) {
+        a = problem?.a;
+      }
+      
+      const message = '다시 생각해보세요.';
+      const explanation = '최고차항의 계수가 양인가요, 음인가요? 그에 따라 어떤 모양이 나오는지 다시 한번 확인해볼까요?';
+      
+      showModal(false, message, explanation);
+    }
+  };
+  
+  // 2단계 표시 함수
+  const showStep2 = () => {
+    const questionSection = document.querySelector('.shape-question-section');
+    if (questionSection) {
+      questionSection.style.display = 'none';
+    }
+    
+    // 왼쪽 영역(problem-panel)에 2단계 표시
+    const problemPanel = document.querySelector('.problem-panel');
+    if (problemPanel && !problemPanel.querySelector('.step2-section')) {
+      const problem = session?.generatedProblem;
+      if (!problem) return;
+      
+      const { a, h, k } = problem;
+      // 최고차항 계수에 따라 부호 결정: +1이면 부호 없음, -1이면 -, 그 외는 + 또는 -
+      let sign = '';
+      if (a === -1) {
+        sign = '-';
+      } else if (a !== 1) {
+        sign = a > 0 ? '+' : '-';
+      }
+      
+      const step2Section = document.createElement('div');
+      step2Section.className = 'step2-section';
+      step2Section.innerHTML = `
+        <p class="step2-question">2단계. 주어진 식을 완전 제곱식으로 표현하면 \\(y = ${sign}(x-a)^{2}+b\\)입니다. \\(a, b\\)에 들어갈 숫자를 찾아 \\((a, b)\\)와 같은 순서쌍 형태로 표현하세요.</p>
+        <div class="step2-input-section">
+          <input type="text" id="step2-answer" class="step2-input" placeholder="예: (1, 2)" />
+          <button id="step2-submit" class="btn primary step2-submit-btn" type="button">확인</button>
+        </div>
+      `;
+      
+      problemPanel.appendChild(step2Section);
+      
+      // MathJax 렌더링
+      if (window.MathJax && window.MathJax.typesetPromise) {
+        window.MathJax.typesetPromise([step2Section]).catch((err) => {
+          console.error('MathJax 렌더링 오류:', err);
+        });
+      }
+      
+      
+      // 확인 버튼 이벤트
+      const submitBtn = document.getElementById('step2-submit');
+      const answerInput = document.getElementById('step2-answer');
+      
+      if (submitBtn && answerInput) {
+        submitBtn.addEventListener('click', () => {
+          const userAnswer = answerInput.value.trim();
+          const correctAnswer = `(${h}, ${k})`;
+          
+          // 정답 확인 (공백 무시, + 부호 허용)
+          // + 부호를 제거하고 비교 (예: (+1, +2) → (1, 2), (+1, -2) → (1, -2))
+          const normalizedUser = userAnswer.replace(/\s/g, '').replace(/\+/g, '');
+          const normalizedCorrect = correctAnswer.replace(/\s/g, '').replace(/\+/g, '');
+          
+          if (normalizedUser === normalizedCorrect) {
+            // 정답일 때
+            const sign = a === -1 ? '-' : (a === 1 ? '' : (a > 0 ? '+' : '-'));
+            const message = '잘했어요 👏';
+            
+            // 사용자가 입력한 정답 형식 그대로 사용 (원본 userAnswer에서 공백만 제거)
+            const userAnswerClean = userAnswer.replace(/\s/g, '');
+            
+            // 완전제곱식 표기: h와 k가 음수일 때 -- 방지
+            let completeSquareForm = '';
+            
+            // (x-h) 부분 처리: h가 음수면 (x+abs(h)), 양수면 (x-h)
+            let hPart = '';
+            if (h < 0) {
+              hPart = `(x+${Math.abs(h)})`;
+            } else {
+              hPart = `(x-${h})`;
+            }
+            
+            // +k 부분 처리: k가 음수면 -abs(k), 양수면 +k
+            let kPart = '';
+            if (k < 0) {
+              kPart = `-${Math.abs(k)}`;
+            } else {
+              kPart = `+${k}`;
+            }
+            
+            if (a === 1) {
+              completeSquareForm = `y = ${hPart}^{2}${kPart}`;
+            } else if (a === -1) {
+              completeSquareForm = `y = -${hPart}^{2}${kPart}`;
+            } else {
+              completeSquareForm = `y = ${a}${hPart}^{2}${kPart}`;
+            }
+            
+            const explanation = `주어진 식을 완전제곱식으로 고쳐 쓰면 \\(${completeSquareForm}\\) 과 같고, 이때 \\((a, b)\\)에 해당하는 것은 \\(${userAnswerClean}\\)입니다.`;
+            
+            // 2단계 입력 섹션을 오른쪽 영역으로 이동
+            const step2Section = document.querySelector('.step2-section');
+            if (step2Section) {
+              animateStep2ToRight(step2Section, userAnswerClean, () => {
+                showModal(true, message, explanation, () => {
+                  showStep3();
+                });
+              });
+            } else {
+              showModal(true, message, explanation);
+              answerInput.disabled = true;
+              submitBtn.disabled = true;
+            }
+          } else {
+            // 오답일 때 - 힌트 제공
+            const message = '다시 생각해보세요.';
+            
+            // 전개된 식을 다시 계산
+            const b = -2 * a * h;
+            const c = a * h * h + k;
+            
+            let expandedExpression = '';
+            if (a === 1) {
+              expandedExpression = 'x^{2}';
+            } else if (a === -1) {
+              expandedExpression = '-x^{2}';
+            } else {
+              expandedExpression = `${a}x^{2}`;
+            }
+            
+            if (b > 0) {
+              expandedExpression += ` + ${b}x`;
+            } else if (b < 0) {
+              expandedExpression += ` - ${Math.abs(b)}x`;
+            }
+            
+            if (c > 0) {
+              expandedExpression += ` + ${c}`;
+            } else if (c < 0) {
+              expandedExpression += ` - ${Math.abs(c)}`;
+            }
+            
+            // 완전제곱식 표기: a 값에 따라 부호 결정
+            let hintSign = '';
+            if (a === -1) {
+              hintSign = '-';
+            } else if (a === 1) {
+              hintSign = ''; // +1일 때는 부호 없음
+            } else {
+              hintSign = a > 0 ? '+' : '-';
+            }
+            
+            const explanation = `완전제곱식 \\(y = ${hintSign}(x-a)^{2}+b\\) 형태로 고쳐써야 합니다. 완전제곱식으로 만드는 것이 어렵다면, 위의 식을 전개하여 원래의 식과 비교해보세요.`;
+            
+            showModal(false, message, explanation);
+          }
+        });
+        
+        // Enter 키로도 제출 가능
+        answerInput.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') {
+            submitBtn.click();
+          }
+        });
+      }
+    }
+  };
+  
+  // 버튼 클릭 이벤트 (내부 요소 클릭도 처리)
+  const handleUpClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleShapeClick('up');
+  };
+  
+  const handleDownClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleShapeClick('down');
+  };
+  
+  convexUpBtn.addEventListener('click', handleUpClick);
+  convexDownBtn.addEventListener('click', handleDownClick);
+  
+  // 내부 요소 클릭도 버튼 클릭으로 처리
+  const upContent = convexUpBtn.querySelector('.shape-btn-content');
+  const downContent = convexDownBtn.querySelector('.shape-btn-content');
+  
+  if (upContent) {
+    upContent.addEventListener('click', handleUpClick);
+  }
+  
+  if (downContent) {
+    downContent.addEventListener('click', handleDownClick);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const session = loadSession();
   initProblemPanel(session);
   initCanvas();
   initSubmitForm(session);
+  initShapeButtons(session);
+  
+  // 4단계 이전에는 그리기 도구/좌표평면을 잠금
+  const drawingPanel = document.querySelector('.drawing-panel');
+  if (drawingPanel) {
+    drawingPanel.classList.add('locked');
+  }
   
   // MathJax가 나중에 로드될 경우를 대비하여 추가 렌더링 시도
   if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
@@ -1017,4 +2110,5 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
 
