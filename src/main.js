@@ -154,7 +154,18 @@ function saveStepAnswer(stepKey, data) {
   try {
     const raw = sessionStorage.getItem('stepAnswers');
     const existing = raw ? JSON.parse(raw) : {};
-    existing[stepKey] = { ...(existing[stepKey] || {}), ...data };
+    const stepData = existing[stepKey] || { attempts: 0, wrongCount: 0 };
+    
+    // 시도 횟수 증가
+    stepData.attempts = (stepData.attempts || 0) + 1;
+    
+    // 틀렸을 경우 틀린 횟수 증가
+    if (data.correct === false) {
+      stepData.wrongCount = (stepData.wrongCount || 0) + 1;
+    }
+    
+    // 기존 데이터와 새 데이터 병합
+    existing[stepKey] = { ...stepData, ...data };
     sessionStorage.setItem('stepAnswers', JSON.stringify(existing));
   } catch (e) {
     console.warn('stepAnswers 저장 중 오류:', e);
@@ -176,18 +187,32 @@ function initProblemPanel(session) {
   const visualEl = document.getElementById('problem-visual');
   const textEl = document.getElementById('problem-text');
 
-  if (!infoEl || !visualEl || !textEl) return;
+  console.log('initProblemPanel called');
+  console.log('infoEl:', infoEl);
+  console.log('visualEl:', visualEl);
+  console.log('textEl:', textEl);
 
-  if (!session) {
-    infoEl.textContent = '세션 정보를 찾을 수 없습니다. 메인 화면에서 다시 시작해 주세요.';
-    textEl.textContent = '';
+  if (!infoEl || !visualEl || !textEl) {
+    console.error('필수 요소를 찾을 수 없습니다:', { infoEl, visualEl, textEl });
     return;
   }
 
-  // 랜덤 문제 생성
+  // 랜덤 문제 생성 (session이 없어도 문제는 생성)
   const problem = generateRandomProblem();
+  console.log('Generated problem:', problem);
   const problemText = formatProblemText(problem);
+  console.log('Problem text:', problemText);
   const problemLabel = formatProblemLabel(problem);
+  
+  // session이 없으면 기본 세션 생성
+  if (!session) {
+    session = {
+      studentId: '게스트',
+      studentName: '게스트',
+      problemId: 'random',
+      startedAt: new Date().toISOString()
+    };
+  }
   
   // 세션에 문제 정보 저장 (나중에 제출 시 사용)
   session.generatedProblem = problem;
@@ -196,77 +221,45 @@ function initProblemPanel(session) {
 
   infoEl.textContent = `학번 ${session.studentId} / 이름 ${session.studentName}`;
 
+  // 문제 텍스트 설정
   textEl.innerHTML = problemText;
+  textEl.style.display = 'block';
+  textEl.style.visibility = 'visible';
+  console.log('Problem text set to element:', textEl.innerHTML);
+  console.log('Text element textContent:', textEl.textContent);
+  console.log('Text element computed style:', window.getComputedStyle(textEl).display);
 
-  // MathJax로 수식 렌더링 - MathJax가 준비될 때까지 기다림
-  const renderMath = () => {
-    console.log('renderMath called');
-    console.log('window.MathJax:', window.MathJax);
+  // MathJax로 수식 렌더링
+  if (window.MathJax && window.MathJax.typesetPromise) {
+    window.MathJax.typesetPromise([textEl]).catch((err) => {
+      console.error('MathJax 렌더링 오류:', err);
+    });
+  } else {
+    console.warn('MathJax가 아직 로드되지 않았습니다. 잠시 후 다시 시도합니다.');
+    // MathJax가 로드될 때까지 대기
+    const checkMathJax = setInterval(() => {
+      if (window.MathJax && window.MathJax.typesetPromise) {
+        clearInterval(checkMathJax);
+        window.MathJax.typesetPromise([textEl]).catch((err) => {
+          console.error('MathJax 렌더링 오류:', err);
+        });
+      }
+    }, 100);
     
-    if (window.MathJax && window.MathJax.typesetPromise) {
-      console.log('MathJax.typesetPromise exists, rendering...');
-      window.MathJax.typesetPromise([textEl]).then(() => {
-        console.log('MathJax rendering completed');
-      }).catch((err) => {
-        console.error('MathJax 렌더링 오류:', err);
-      });
-    } else if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
-      console.log('Waiting for MathJax to be ready...');
-      // MathJax가 아직 로드 중이면 준비될 때까지 기다림
-      window.MathJax.startup.promise.then(() => {
-        console.log('MathJax startup promise resolved');
-        if (window.MathJax && window.MathJax.typesetPromise) {
-          console.log('Rendering after startup...');
-          window.MathJax.typesetPromise([textEl]).then(() => {
-            console.log('MathJax rendering completed after startup');
-          }).catch((err) => {
-            console.error('MathJax 렌더링 오류:', err);
-          });
-        }
-      }).catch((err) => {
-        console.error('MathJax 시작 오류:', err);
-      });
-    } else {
-      console.log('MathJax not ready, retrying in 100ms...');
-      // MathJax가 아직 로드되지 않았으면 잠시 후 다시 시도 (최대 5초)
-      let retryCount = 0;
-      const maxRetries = 50;
-      const retry = () => {
-        retryCount++;
-        if (retryCount > maxRetries) {
-          console.error('MathJax 로드 실패: 최대 재시도 횟수 초과');
-          return;
-        }
-        if (window.MathJax && window.MathJax.typesetPromise) {
-          window.MathJax.typesetPromise([textEl]).then(() => {
-            console.log('MathJax rendering completed after retry');
-          }).catch((err) => {
-            console.error('MathJax 렌더링 오류:', err);
-          });
-        } else if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
-          window.MathJax.startup.promise.then(() => {
-            if (window.MathJax && window.MathJax.typesetPromise) {
-              window.MathJax.typesetPromise([textEl]).catch((err) => {
-                console.error('MathJax 렌더링 오류:', err);
-              });
-            }
-          });
-        } else {
-          setTimeout(retry, 100);
-        }
-      };
-      setTimeout(retry, 100);
-    }
-  };
+    // 5초 후 타임아웃
+    setTimeout(() => {
+      clearInterval(checkMathJax);
+    }, 5000);
+  }
 
   // 3단계를 오른쪽 단서 영역으로 이동하는 애니메이션 함수 (2단계와 동일한 방식)
   const animateStep3ToRight = (step3Section, answerText, callback) => {
     const drawingPanel = document.querySelector('.drawing-panel');
     if (!drawingPanel) {
       callback();
-      return;
-    }
-    
+    return;
+  }
+
     const clueList = drawingPanel.querySelector('#clue-list');
     const targetContainer = clueList || drawingPanel;
     
@@ -327,7 +320,6 @@ function initProblemPanel(session) {
     });
   };
   
-  renderMath();
 
   // 간단한 도식(placeholder)을 CSS와 함께 표현
   visualEl.innerHTML = '';
@@ -812,9 +804,9 @@ function initCanvas() {
   const updatePreview = (event) => {
     const pos = getMathPos(event);
     
-    // 점 모드: 가장 가까운 점 미리보기
-    const nearest = findNearestIntegerCoord(pos.mathX, pos.mathY, currentMode, coordSystem, pos.pixelX, pos.pixelY);
-    if (nearest.valid) {
+      // 점 모드: 가장 가까운 점 미리보기
+      const nearest = findNearestIntegerCoord(pos.mathX, pos.mathY, currentMode, coordSystem, pos.pixelX, pos.pixelY);
+      if (nearest.valid) {
       // 꼭짓점 모드일 때는 기존과 동일하게 점만 미리보기
       if (currentMode === 'vertex') {
         previewElement = {
@@ -835,8 +827,8 @@ function initCanvas() {
           pixelY: nearest.pixelY
         };
       }
-    } else {
-      previewElement = null;
+      } else {
+        previewElement = null;
     }
     
     redraw();
@@ -852,13 +844,13 @@ function initCanvas() {
       return;
     }
     
-    // 점 모드: 가장 가까운 점 찾아서 찍기
-    const nearest = findNearestIntegerCoord(pos.mathX, pos.mathY, currentMode, coordSystem, pos.pixelX, pos.pixelY);
-    
-    if (nearest.valid) {
-      // 범위 체크
-      if (nearest.x >= coordSystem.xMin && nearest.x <= coordSystem.xMax &&
-          nearest.y >= coordSystem.yMin && nearest.y <= coordSystem.yMax) {
+      // 점 모드: 가장 가까운 점 찾아서 찍기
+      const nearest = findNearestIntegerCoord(pos.mathX, pos.mathY, currentMode, coordSystem, pos.pixelX, pos.pixelY);
+      
+      if (nearest.valid) {
+        // 범위 체크
+        if (nearest.x >= coordSystem.xMin && nearest.x <= coordSystem.xMax &&
+            nearest.y >= coordSystem.yMin && nearest.y <= coordSystem.yMax) {
         
         if (currentMode === 'vertex') {
           // 꼭짓점은 한 번만: 이미 있으면 무시
@@ -883,9 +875,9 @@ function initCanvas() {
           
           // 꼭짓점과 동일한 좌표는 무시 (꼭짓점이 움직이지 않도록)
           if (nearest.x === vertexPoint.x && nearest.y === vertexPoint.y) {
-            return;
-          }
-          
+      return;
+    }
+    
           passingPoint = { x: nearest.x, y: nearest.y };
           
           // 지나는 점은 1개만 유지
@@ -898,14 +890,14 @@ function initCanvas() {
           });
         }
         
-        redraw();
+    redraw();
       }
     }
   };
 
   // 마우스 이동 시 미리보기 업데이트
   const handleMouseMove = (event) => {
-    updatePreview(event);
+      updatePreview(event);
   };
 
   canvas.addEventListener('mousedown', startDrawing);
@@ -913,7 +905,7 @@ function initCanvas() {
 
   canvas.addEventListener('touchstart', startDrawing, { passive: false });
   canvas.addEventListener('touchmove', (event) => {
-    updatePreview(event);
+      updatePreview(event);
   }, { passive: false });
   
   // 캔버스 밖으로 나갈 때 미리보기 제거
@@ -1036,20 +1028,54 @@ function initCanvas() {
       const message = '잘했어요 👏';
       const explanation = '꼭짓점과 꼭짓점 외에 지나는 점이 모두 올바르게 선택되었습니다.';
       
-      // 설명 입력 영역(그래프에 대한 설명)을 노출
-      const answerForm = document.getElementById('answer-form');
-      if (answerForm) {
-        answerForm.classList.remove('hidden');
-        // 살짝 스크롤하여 학생이 보기 쉽게
-        answerForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // 오른쪽 영역의 단서들 모두 제거
+      const drawingPanel = document.querySelector('.drawing-panel');
+      if (drawingPanel) {
+        // clue-list 내의 모든 단서 제거
+        const clueList = drawingPanel.querySelector('#clue-list');
+        if (clueList) {
+          clueList.innerHTML = '';
+        }
+        
+        // step1, step2, step3 badge 제거
+        const step1Badge = drawingPanel.querySelector('.step1-badge, .shape-success-badge');
+        if (step1Badge) step1Badge.remove();
+        const step2Badge = drawingPanel.querySelector('.step2-badge');
+        if (step2Badge) step2Badge.remove();
+        const step3Badge = drawingPanel.querySelector('.step3-badge');
+        if (step3Badge) step3Badge.remove();
+        
+        // clue-board 제목과 설명 숨기기 또는 변경
+        const clueBoard = drawingPanel.querySelector('.clue-board');
+        if (clueBoard) {
+          const clueDesc = clueBoard.querySelector('.clue-desc');
+          if (clueDesc) {
+            clueDesc.textContent = '이제 그래프만 보고 설명을 작성해보세요.';
+          }
+        }
       }
       
+      // 4단계 답안 저장 (정답)
+      saveStepAnswer('step4', { correct: true });
+      
       if (window.shapeShowModal) {
-        window.shapeShowModal(true, message, explanation);
+        window.shapeShowModal(true, message, explanation, () => {
+          // 5단계로 이동
+          if (window.showStep5) {
+            window.showStep5();
+          }
+        });
       } else {
         alert('잘했어요! 꼭짓점과 지나는 점이 모두 올바릅니다.');
+        // 5단계로 이동
+        if (window.showStep5) {
+          window.showStep5();
+        }
       }
     } else {
+      // 틀린 경우 틀린 횟수 증가
+      saveStepAnswer('step4', { correct: false });
+      
       const message = '오른쪽 영역의 단서를 잘 확인하세요.';
       if (window.shapeShowModal) {
         window.shapeShowModal(false, message, '');
@@ -1101,6 +1127,12 @@ function initCanvas() {
     if (e.target && (e.target.id === 'draw-graph' || e.target.closest('#draw-graph'))) {
       console.log('Event delegation caught click on draw-graph');
       handleDrawGraph(e);
+    }
+    if (e.target && (e.target.id === 'check-graph' || e.target.closest('#check-graph'))) {
+      console.log('Event delegation caught click on check-graph');
+      e.preventDefault();
+      e.stopPropagation();
+      checkGraphAnswer();
     }
   }, true);
   
@@ -1291,16 +1323,30 @@ function initSubmitForm(session) {
   const feedbackSection = document.getElementById('feedback-section');
   const feedbackContent = document.getElementById('feedback-content');
 
-  if (!form || !canvas || !feedbackSection || !feedbackContent) return;
+  if (!canvas || !feedbackSection || !feedbackContent) return;
 
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
+  // session이 없으면 기본 세션 생성
     if (!session) {
-      alert('세션 정보를 찾을 수 없습니다. 메인 화면에서 다시 시작해 주세요.');
-      return;
+    session = {
+      studentId: '게스트',
+      studentName: '게스트',
+      problemId: 'random',
+      startedAt: new Date().toISOString()
+    };
+    // localStorage에서 문제 정보 가져오기 시도
+    const savedSession = loadSession();
+    if (savedSession && savedSession.generatedProblem) {
+      session.generatedProblem = savedSession.generatedProblem;
+      session.problemLabel = savedSession.problemLabel;
     }
+  }
 
-    const descriptionEl = document.getElementById('answer-description');
+  // 기존 폼과 5단계 폼 모두 처리
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    // 5단계 폼 또는 기존 폼에서 설명 가져오기
+    const descriptionEl = document.getElementById('answer-description-step5') || document.getElementById('answer-description');
     const description = descriptionEl ? descriptionEl.value.trim() : '';
 
     // 캔버스 이미지를 base64 데이터 URL로 변환
@@ -1310,7 +1356,7 @@ function initSubmitForm(session) {
     const generatedProblem = session.generatedProblem || generateRandomProblem();
     const problemText = formatProblemText(generatedProblem);
     const problemLabel = session.problemLabel || formatProblemLabel(generatedProblem);
-    
+
     const submission = {
       id: `${session.studentId}-${Date.now()}`,
       studentId: session.studentId,
@@ -1350,6 +1396,16 @@ function initSubmitForm(session) {
     existing.push(submission);
     localStorage.setItem('fbd-submissions', JSON.stringify(existing));
 
+    // 단계별 틀린 횟수 계산
+    const stepAnswers = submission.stepAnswers || {};
+    const step1Wrong = stepAnswers.step1?.wrongCount || 0;
+    const step2Wrong = stepAnswers.step2?.wrongCount || 0;
+    const step3Wrong = stepAnswers.step3?.wrongCount || 0;
+    const step4Wrong = stepAnswers.step4?.wrongCount || 0;
+    
+    // 학습 조언 생성
+    const studyAdvice = generateStudyAdvice(step1Wrong, step2Wrong, step3Wrong, step4Wrong);
+
     // 체크리스트 형태로 피드백 표시
     let checklistHTML = '';
     if (gptResult.checklist) {
@@ -1379,6 +1435,36 @@ function initSubmitForm(session) {
       checklistHTML += '</ul></div>';
     }
 
+    // 단계별 틀린 횟수 표시 HTML 생성
+    const stepWrongCountHTML = `
+      <div class="feedback-summary" style="margin-top: 20px;">
+        <h4>단계별 오답 횟수</h4>
+        <ul style="list-style: none; padding: 0; margin: 10px 0;">
+          <li style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+            <strong>1단계 (그래프 모양):</strong> ${step1Wrong}번 틀림
+          </li>
+          <li style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+            <strong>2단계 (꼭짓점 좌표):</strong> ${step2Wrong}번 틀림
+          </li>
+          <li style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+            <strong>3단계 (y절편):</strong> ${step3Wrong}번 틀림
+          </li>
+          <li style="padding: 8px 0;">
+            <strong>4단계 (그래프 그리기):</strong> ${step4Wrong}번 틀림
+          </li>
+        </ul>
+      </div>
+    `;
+
+    // 학습 조언 HTML 생성
+    const studyAdviceHTML = `
+      <div class="feedback-summary" style="margin-top: 20px; padding: 16px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #3b82f6;">
+        <h4 style="margin-top: 0; color: #1e40af;">📚 학습 조언</h4>
+        <p class="feedback-text" style="color: #1e3a8a; line-height: 1.6;">${studyAdvice}</p>
+      </div>
+    `;
+
+    // 피드백 섹션에 기본 결과 표시
     feedbackContent.innerHTML = `
       <p><strong>점수:</strong> ${gptResult.score} / ${gptResult.maxScore}</p>
       ${checklistHTML}
@@ -1387,7 +1473,103 @@ function initSubmitForm(session) {
         <p class="feedback-text">${gptResult.feedback || '피드백이 제공되지 않았습니다.'}</p>
       </div>
     `;
+
+    // 만점일 경우 오른쪽 영역에 단계별 오답 횟수와 학습 조언 표시
+    if (gptResult.score === gptResult.maxScore) {
+      const drawingPanel = document.querySelector('.drawing-panel');
+      if (drawingPanel) {
+        const clueBoard = drawingPanel.querySelector('.clue-board');
+        if (clueBoard) {
+          // 기존 내용 제거하고 새로운 내용 추가
+          clueBoard.innerHTML = `
+            <h3>🎉 만점 축하합니다!</h3>
+            ${stepWrongCountHTML}
+            ${studyAdviceHTML}
+          `;
+        } else {
+          // clue-board가 없으면 새로 생성
+          const newClueBoard = document.createElement('div');
+          newClueBoard.className = 'clue-board';
+          newClueBoard.innerHTML = `
+            <h3>🎉 만점 축하합니다!</h3>
+            ${stepWrongCountHTML}
+            ${studyAdviceHTML}
+          `;
+          drawingPanel.insertBefore(newClueBoard, drawingPanel.querySelector('.drawing-tools-wrapper'));
+        }
+      }
+    }
+  };
+
+  // 기존 폼에 이벤트 리스너 추가
+  if (form) {
+    form.addEventListener('submit', handleSubmit);
+  }
+  
+  // 5단계 폼에도 이벤트 리스너 추가 (나중에 생성될 수 있음)
+  // showStep5에서 이미 처리하지만, 중복 방지를 위해 여기서도 처리
+  const step5Form = document.getElementById('answer-form-step5');
+  if (step5Form) {
+    step5Form.addEventListener('submit', handleSubmit);
+  }
+  
+  // 5단계 폼이 나중에 생성될 수 있으므로 MutationObserver로 감시
+  const observer = new MutationObserver((mutations) => {
+    const step5Form = document.getElementById('answer-form-step5');
+    if (step5Form && !step5Form.dataset.listenerAdded) {
+      step5Form.addEventListener('submit', handleSubmit);
+      step5Form.dataset.listenerAdded = 'true';
+    }
   });
+  
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+/**
+ * 단계별 틀린 횟수를 기반으로 학습 조언 생성
+ */
+function generateStudyAdvice(step1Wrong, step2Wrong, step3Wrong, step4Wrong) {
+  const totalWrong = step1Wrong + step2Wrong + step3Wrong + step4Wrong;
+  const adviceParts = [];
+  
+  // 전체적인 평가
+  if (totalWrong === 0) {
+    adviceParts.push('모든 단계를 한 번에 맞추셨네요! 이차함수에 대한 이해가 매우 뛰어납니다. 더 복잡한 문제에도 도전해보세요.');
+  } else if (totalWrong <= 2) {
+    adviceParts.push('대부분의 단계를 잘 해결하셨습니다. 약간의 실수가 있었지만 전반적으로 이해가 잘 되어 있습니다.');
+  } else if (totalWrong <= 5) {
+    adviceParts.push('일부 단계에서 어려움을 겪으셨네요. 이차함수의 기본 개념을 다시 한번 정리해보시면 도움이 될 것 같습니다.');
+  } else {
+    adviceParts.push('이차함수에 대한 기본 개념을 다시 학습하시는 것을 권장합니다. 단계별로 차근차근 공부하시면 좋을 것 같습니다.');
+  }
+  
+  // 단계별 구체적인 조언
+  if (step1Wrong > 0) {
+    adviceParts.push(`<strong>1단계 (그래프 모양):</strong> 최고차항의 계수(a)가 양수이면 아래로 볼록, 음수이면 위로 볼록한 포물선이 됩니다. y = x²와 y = -x²의 그래프를 비교해보시면 이해가 쉬울 것입니다.`);
+  }
+  
+  if (step2Wrong > 0) {
+    adviceParts.push(`<strong>2단계 (꼭짓점 좌표):</strong> 완전제곱식 y = a(x-h)² + k에서 꼭짓점은 (h, k)입니다. 주어진 식을 완전제곱식으로 변환하는 연습을 많이 해보세요.`);
+  }
+  
+  if (step3Wrong > 0) {
+    adviceParts.push(`<strong>3단계 (y절편):</strong> y절편은 x = 0을 대입하여 구할 수 있습니다. y = ax² + bx + c 형태에서 y절편은 c와 같습니다.`);
+  }
+  
+  if (step4Wrong > 0) {
+    adviceParts.push(`<strong>4단계 (그래프 그리기):</strong> 꼭짓점과 y절편을 이용하여 그래프를 그릴 수 있습니다. 꼭짓점을 중심으로 대칭인 포물선을 그려보세요.`);
+  }
+  
+  // 추가 학습 권장사항
+  if (totalWrong > 0) {
+    adviceParts.push(`<br><strong>추가 학습 권장사항:</strong><br>
+      • 이차함수의 표준형 y = a(x-h)² + k와 일반형 y = ax² + bx + c의 관계를 이해하세요.<br>
+      • 꼭짓점, 축, y절편의 의미를 정확히 파악하세요.<br>
+      • 다양한 이차함수의 그래프를 직접 그려보며 연습하세요.<br>
+      • 완전제곱식으로 변환하는 방법을 반복 연습하세요.`);
+  }
+  
+  return adviceParts.join('<br><br>');
 }
 
 /**
@@ -1399,11 +1581,30 @@ function initShapeButtons(session) {
   
   if (!convexUpBtn || !convexDownBtn) return;
   
-  // 세션에서 생성된 문제 정보 가져오기
-  const problem = session?.generatedProblem;
+  // 세션에서 생성된 문제 정보 가져오기 (없으면 localStorage에서 가져오기)
+  let problem = session?.generatedProblem;
   if (!problem) {
-    console.warn('생성된 문제 정보를 찾을 수 없습니다.');
-    return;
+    const savedSession = loadSession();
+    problem = savedSession?.generatedProblem;
+  }
+  // 그래도 없으면 랜덤 문제 생성
+  if (!problem) {
+    problem = generateRandomProblem();
+    // 생성한 문제를 session에 저장
+    if (session) {
+      session.generatedProblem = problem;
+      localStorage.setItem('fbd-current-session', JSON.stringify(session));
+    } else {
+      // session이 없으면 새로 생성
+      const newSession = {
+        studentId: '게스트',
+        studentName: '게스트',
+        problemId: 'random',
+        generatedProblem: problem,
+        startedAt: new Date().toISOString()
+      };
+      localStorage.setItem('fbd-current-session', JSON.stringify(newSession));
+    }
   }
   
   const { a } = problem;
@@ -1728,6 +1929,185 @@ function initShapeButtons(session) {
     });
   };
 
+  // 5단계 표시 함수 (그래프 설명 작성) - 전역에서 접근 가능하도록
+  window.showStep5 = function() {
+    const problemPanel = document.querySelector('.problem-panel');
+    const drawingPanel = document.querySelector('.drawing-panel');
+    const contentGrid = document.querySelector('.content-two-columns');
+    
+    // 4단계 섹션 숨기기 (step4-section 또는 step3-section 중 "4단계" 텍스트가 있는 것)
+    const step4Section = problemPanel?.querySelector('.step4-section');
+    if (step4Section) {
+      step4Section.style.display = 'none';
+    }
+    // step3-section 중 "4단계" 텍스트가 있는 것도 찾아서 숨기기
+    const step3Sections = problemPanel?.querySelectorAll('.step3-section');
+    if (step3Sections) {
+      step3Sections.forEach(section => {
+        const text = section.textContent || section.innerText;
+        if (text.includes('4단계')) {
+          section.style.display = 'none';
+        }
+      });
+    }
+    
+    // 오른쪽 영역의 단서들을 숨기는 함수
+    const hideClues = () => {
+      const cluePanel = contentGrid?.querySelector('.clue-panel');
+      if (cluePanel) {
+        // fade-out 애니메이션 적용
+        cluePanel.classList.add('fade-out');
+        setTimeout(() => {
+          cluePanel.classList.add('hidden');
+        }, 1000);
+      }
+      
+      // drawing-panel 내의 clue-board도 부드럽게 숨기기
+      if (drawingPanel) {
+        const clueBoard = drawingPanel.querySelector('.clue-board');
+        if (clueBoard && !cluePanel) {
+          // fade-out 애니메이션 적용
+          clueBoard.classList.add('fade-out');
+          setTimeout(() => {
+            clueBoard.classList.add('hidden');
+          }, 1000);
+        }
+      }
+    };
+    
+    // '힌트가 사라집니다.' 모달 표시
+    // window.shapeShowModal이 초기화될 때까지 대기
+    const showHintModal = () => {
+      if (window.shapeShowModal) {
+        window.shapeShowModal(true, '힌트가 사라집니다.', '이제 그래프만 보고 설명을 작성해보세요.', () => {
+          // 확인 버튼을 누르면 단서들 숨기기
+          hideClues();
+        });
+      } else {
+        // shapeShowModal이 없으면 직접 모달 표시
+        const modal = document.getElementById('shape-modal');
+        if (modal) {
+          const modalIcon = modal.querySelector('.shape-modal-icon');
+          const modalTitle = modal.querySelector('.shape-modal-title');
+          const modalMessage = modal.querySelector('.shape-modal-message');
+          const closeBtn = modal.querySelector('.shape-modal-close');
+          
+          modalIcon.innerHTML = '💡';
+          modalIcon.className = 'shape-modal-icon incorrect';
+          modalTitle.textContent = '알림';
+          modalMessage.innerHTML = '힌트가 사라집니다.<br><br>이제 그래프만 보고 설명을 작성해보세요.';
+          
+          modal.classList.add('active');
+          
+          // 닫기 버튼 클릭 핸들러
+          const closeHandler = () => {
+            modal.classList.remove('active');
+            closeBtn.removeEventListener('click', closeHandler);
+            // 확인 버튼을 누르면 단서들 숨기기
+            hideClues();
+          };
+          
+          closeBtn.onclick = closeHandler;
+          modal.querySelector('.shape-modal-overlay').onclick = closeHandler;
+        } else {
+          // 모달이 없으면 confirm 사용
+          if (confirm('힌트가 사라집니다.\n이제 그래프만 보고 설명을 작성해보세요.')) {
+            hideClues();
+          }
+        }
+      }
+    };
+    
+    // 모달 표시 (약간의 지연을 두어 초기화 대기)
+    setTimeout(showHintModal, 100);
+    
+    // drawing-tools 숨기기 (그리기 도구 버튼들)
+    const drawingTools = drawingPanel.querySelector('.drawing-tools');
+    if (drawingTools) {
+      drawingTools.style.display = 'none';
+    }
+    
+    // drawing-actions 숨기기 (지우기, 그래프 그리기, 확인 버튼)
+    const drawingActions = drawingPanel.querySelector('.drawing-actions');
+    if (drawingActions) {
+      drawingActions.style.display = 'none';
+    }
+    
+    // hint 숨기기
+    const hint = drawingPanel.querySelector('.hint');
+    if (hint) {
+      hint.style.display = 'none';
+    }
+    
+    // panel-title 숨기기
+    const panelTitle = drawingPanel.querySelector('.panel-title');
+    if (panelTitle) {
+      panelTitle.style.display = 'none';
+    }
+    
+    // canvas-wrapper는 유지 (좌표평면)
+    // drawing-tools-wrapper는 유지하되, 그 안의 drawing-tools만 숨김
+    // canvas-wrapper는 drawing-tools-wrapper 안에 있으므로 그대로 유지됨
+    
+    if (problemPanel && !problemPanel.querySelector('.step5-section')) {
+      const step5Section = document.createElement('div');
+      step5Section.className = 'step5-section';
+      step5Section.innerHTML = `
+        <p class="step3-question">5단계. 그린 그래프에 대해 설명을 작성해봅시다.</p>
+        <div class="step5-form-wrapper">
+          <form id="answer-form-step5" class="form-vertical">
+            <label>
+              그래프에 대한 설명
+              <textarea
+                id="answer-description-step5"
+                rows="3"
+                placeholder="그린 그래프에 대해 다음의 요소들을 포함하여 설명해 보세요.&#10;[꼭짓점의 위치, y절편, 그래프의 개형]"
+              ></textarea>
+            </label>
+            <div class="form-actions">
+              <button type="submit" class="btn primary">그래프에 대한 설명 제출하고 AI 피드백 받기</button>
+            </div>
+          </form>
+        </div>
+      `;
+      
+      problemPanel.appendChild(step5Section);
+      
+      // 기존 answer-form 숨기기 (student.html에 있는 것)
+      const originalAnswerForm = document.getElementById('answer-form');
+      if (originalAnswerForm) {
+        originalAnswerForm.classList.add('hidden');
+      }
+      
+      // 스크롤하여 5단계가 보이도록
+      step5Section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      
+      // 5단계 폼 제출 이벤트 리스너 추가
+      const step5Form = document.getElementById('answer-form-step5');
+      if (step5Form) {
+        // 기존 이벤트 리스너가 있는지 확인
+        if (!step5Form.dataset.listenerAdded) {
+          step5Form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            // 기존 answer-form의 submit 이벤트 트리거
+            const originalForm = document.getElementById('answer-form');
+            if (originalForm) {
+              // answer-description 값 복사
+              const step5Desc = document.getElementById('answer-description-step5');
+              const originalDesc = document.getElementById('answer-description');
+              if (step5Desc && originalDesc) {
+                originalDesc.value = step5Desc.value;
+              }
+              // 기존 폼 제출
+              originalForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            }
+          });
+          step5Form.dataset.listenerAdded = 'true';
+        }
+      }
+    }
+  };
+
   // 4단계 표시 함수 (그리기 도구/좌표평면 공개)
   const showStep4 = () => {
     const problemPanel = document.querySelector('.problem-panel');
@@ -1872,6 +2252,13 @@ function initShapeButtons(session) {
               afterAnimation();
             }
           } else {
+            // 틀린 경우 틀린 횟수 증가
+            saveStepAnswer('step3', {
+              input: userY,
+              correct: false,
+              correctAnswer: `(0, ${problem.yIntercept})`
+            });
+            
             showModal(false, '다시 생각해보세요.', 'y절편을 구하려면 주어진 식에 \\(x=0\\)을 대입해보세요.');
           }
         });
@@ -1911,6 +2298,9 @@ function initShapeButtons(session) {
         });
       });
     } else {
+      // 틀린 경우 틀린 횟수 증가
+      saveStepAnswer('step1', { choice: selectedShape === 'up' ? '위로 볼록' : '아래로 볼록', correct: false });
+      
       // 문제 정보 가져오기
       let a;
       try {
@@ -2055,6 +2445,13 @@ function initShapeButtons(session) {
               submitBtn.disabled = true;
             }
           } else {
+            // 틀린 경우 틀린 횟수 증가
+            saveStepAnswer('step2', {
+              input: userAnswer.replace(/\s/g, ''),
+              correct: false,
+              correctAnswer: `(${h}, ${k})`
+            });
+            
             // 오답일 때 - 힌트 제공
             const message = '다시 생각해보세요.';
             
@@ -2139,8 +2536,13 @@ function initShapeButtons(session) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('DOMContentLoaded fired');
   const session = loadSession();
+  console.log('Session loaded:', session);
+  
+  // 문제 패널 초기화를 먼저 실행
   initProblemPanel(session);
+  
   initCanvas();
   initSubmitForm(session);
   initShapeButtons(session);

@@ -516,6 +516,12 @@ textarea:focus {
   display: none;
 }
 
+.fade-out {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 1s ease;
+}
+
 /* 교사용 페이지 */
 
 .submissions-table {
